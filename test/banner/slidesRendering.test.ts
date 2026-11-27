@@ -6,6 +6,7 @@ import { editSlides, slidePoster } from '../../app/utils/banner-slides'
 import { buildBannerHTML as client } from '../../app/utils/banner-html-builder'
 import { buildBannerHTML as server } from '../../server/utils/banner/htmlBuilder'
 import type { ArtboardState, Layer } from '../../app/types/banner-studio'
+import { readBannerAudioManifest } from '../../shared/bannerAudioRender.mjs'
 import gsap from 'gsap'
 
 const initial = (): ArtboardState => ({ playback: { duration: 4, loopCount: 1 }, layers: [0, 1].map(index => ({ id: index + 1, type: 'rect', opacity: 1, name: `Scene ${index}`, x: 0, y: 0, w: 300, h: 250, zIndex: 1, fillColor: index ? '#ff0000' : '#0000ff', startTime: index * 2, endTime: index * 2 + 2, clipToPresence: true, animIn: 'none', animInDur: 0, animOut: 'none', keyframes: { opacity: [{ time: index * 2, value: 1 }, { time: index * 2 + 2, value: 1 }] } } as Layer)) })
@@ -78,6 +79,49 @@ it('exports transition overlays above artwork added later or brought to the fron
   for (const build of [client, server]) {
     const html = build('mrec', board.layers, { playback: board.playback })
     expect(html.indexOf('class="layer" data-id="3"')).toBeGreaterThan(html.indexOf('class="layer" data-id="99"'))
+  }
+})
+
+it('keeps the same native audio playing through a slide fade and exports one continuous track', async () => {
+  const board = editSlides(initial(), { type: 'transition', index: 0, duration: 1 }, () => 3, { w: 300, h: 250 })
+  const track = {
+    ...board.layers[0]!, id: 4, type: 'audio' as const, name: 'Music bed', src: 'https://assets.example.com/bed.wav',
+    audioAcrossSlides: true, clipToPresence: false, slideId: undefined, startTime: 0, endTime: 4, mediaStart: 1, volume: 0.5
+  }
+  board.layers.push(track)
+  const state = { activeKey: 'mrec', sets: { mrec: board }, currentTime: 0, duration: 4, isPlaying: false }
+  vi.stubGlobal('useBannerStudio', () => ({ state, activeLayers: ref(board.layers) }))
+  const root = document.createElement('div')
+  root.innerHTML = '<div id="lyr-1"></div><div id="lyr-2"></div><div id="lyr-3"></div><div id="lyr-4"><audio></audio></div>'
+  const audio = root.querySelector('audio')!
+  let paused = true
+  Object.defineProperties(audio, { duration: { value: 12 }, paused: { get: () => paused } })
+  audio.play = vi.fn(async () => {
+    paused = false
+  })
+  audio.pause = vi.fn(() => {
+    paused = true
+  })
+  document.body.append(root)
+  const controller = useBannerTimeline()
+  try {
+    const timeline = controller.buildTimeline(root, board.layers)
+    controller.playTimeline()
+    timeline.time(1.6, false)
+    await Promise.resolve()
+    expect(audio.currentTime).toBeCloseTo(2.6)
+    timeline.time(2.4, false)
+    expect(audio.currentTime).toBeCloseTo(3.4)
+    expect(audio.paused).toBe(false)
+    expect(audio.play).toHaveBeenCalledOnce()
+    for (const build of [client, server]) {
+      expect(readBannerAudioManifest(build('mrec', board.layers, { playback: board.playback }))).toEqual([
+        { src: track.src, start: 0, end: 4, volume: 0.5, loop: false, mediaStart: 1 }
+      ])
+    }
+  } finally {
+    controller.destroyTimeline()
+    root.remove()
   }
 })
 

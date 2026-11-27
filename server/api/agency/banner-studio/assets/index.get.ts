@@ -60,6 +60,10 @@ export default defineEventHandler(async (event) => {
       params.push(mediaType + '/%')
     }
 
+    if (mediaType === 'audio' && query.audioUploadsOnly === 'true') {
+      sql += " AND NOT (COALESCE(tags, ARRAY[]::text[]) @> ARRAY['audio-studio']::text[])"
+    }
+
     if (search) {
       sql += ` AND name ILIKE $${paramIndex}`
       params.push(`%${search}%`)

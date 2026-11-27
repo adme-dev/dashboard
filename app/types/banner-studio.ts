@@ -70,6 +70,8 @@ export interface Layer {
   timelineGroup?: { id: string, name: string } | null
   /** Scene ownership; absent layers can span the whole sequence. */
   slideId?: string
+  /** Audio explicitly owned by the whole sequence, even when its current timing fits one slide. */
+  audioAcrossSlides?: boolean
   /** A source scene fades as one composited group while its layers remain editable. */
   slideFade?: { exit?: { at: number, duration: number, ease: string }, id: string, start: number, end: number, duration: number, ease: string }
   /** Generated, locked fade-through-background overlay. */

@@ -18,7 +18,7 @@ export function useBannerTimelineGroups() {
   }
   function groupLayers(ids: number[]) {
     const layers = activeLayers.value.filter(layer => ids.includes(layer.id))
-    if (layers.length < 2 || !editable(layers)) return null
+    if (layers.length < 2 || !editable(layers) || layers.some(layer => layer.type === 'audio' && layer.audioAcrossSlides)) return null
     const id = crypto.randomUUID()
     const names = new Set(activeLayers.value.map(layer => layer.timelineGroup?.name))
     let number = 1

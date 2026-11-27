@@ -103,6 +103,26 @@ describe('MediaGeneratedThumbnail', () => {
     await flush()
     expect(host.textContent).toContain('No preview')
   })
+
+  it('waits for a library card to become visible before decoding the uploaded clip', async () => {
+    let reportVisibility: IntersectionObserverCallback | undefined
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { reportVisibility = callback }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    })
+    const host = mount(MediaGeneratedThumbnail, { sourceUrl: '/library/clip.mp4', lazy: true })
+    await flush()
+    expect(host.querySelector('video')).toBeNull()
+    const target = host.querySelector('[data-thumbnail-state]')!
+    reportVisibility?.([{ target, time: 1, isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    await flush()
+    const video = host.querySelector('video')!
+    expect(video.getAttribute('src')).toBe('/library/clip.mp4')
+    expect(video.autoplay).toBe(false)
+    expect(video.controls).toBe(false)
+  })
 })
 
 describe('MediaGenerationStatus', () => {

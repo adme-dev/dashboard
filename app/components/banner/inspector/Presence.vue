@@ -18,7 +18,10 @@ const board = computed(() => state.sets[state.activeKey])
 const slides = computed(() => slideRanges(resolveSlides(board.value)))
 const ownership = computed(() => selectedLayer.value && board.value ? layerSlideId(board.value, selectedLayer.value) : undefined)
 const owner = computed(() => slides.value.find(slide => slide.id === ownership.value))
-const bounds = computed(() => ({ start: owner.value?.start || 0, end: owner.value?.end || state.duration || 5 }))
+const bounds = computed(() => ({
+  start: owner.value?.start ?? 0,
+  end: owner.value?.end ?? (selectedLayer.value?.audioAcrossSlides ? slides.value.at(-1)?.end : undefined) ?? (state.duration || 5)
+}))
 function setNum(key: string, value: string | number) {
   if (disabled.value || !selectedLayer.value || value === '' || !Number.isFinite(Number(value))) return
   updateLayer(selectedLayer.value.id, { [key]: Number(value) })

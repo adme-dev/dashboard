@@ -8,7 +8,8 @@ afterEach(() => { app?.unmount(); vi.unstubAllGlobals() })
 
 it('selects a layer and reorders by buttons or drag using layer ids', async () => {
   const layers = Vue.ref([
-    { id: 17, type: 'text', name: 'Headline' }, { id: 3, type: 'image', name: 'Car' }
+    { id: 17, type: 'text', name: 'Headline' }, { id: 3, type: 'image', name: 'Car' },
+    { id: 9, type: 'audio', name: 'Music bed', audioAcrossSlides: true }
   ])
   const state = Vue.reactive({ selectedLayerId: null as number | null, activeKey: 'mrec' })
   const moveSlideLayer = vi.fn()
@@ -25,6 +26,10 @@ it('selects a layer and reorders by buttons or drag using layer ids', async () =
   app.component('UIcon', { template: '<span />' })
   app.mount(host)
   const button = (name: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!
+  const soundtrack = host.querySelector<HTMLButtonElement>('[aria-label="Soundtrack"] button')!
+  expect(soundtrack.textContent).toBe('Music bed')
+  soundtrack.click()
+  expect(state.selectedLayerId).toBe(9)
   expect(button('Move Headline forward').disabled).toBe(true)
   button('Move Car forward').click()
   expect(state.selectedLayerId).toBe(3)

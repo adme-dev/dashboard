@@ -7,6 +7,8 @@ const { state, slides, currentSlide, selectSlide } = useBannerSlides()
 const { pauseTimeline } = useBannerTimeline()
 const { isLayerLockedByOther } = useBannerRealtime()
 const slideIndex = computed(() => slides.value.findIndex(slide => slide.id === currentSlide.value?.id))
+const soundtrackLayers = computed(() => slideLayers.value.filter(layer => layer.type === 'audio' && layer.audioAcrossSlides))
+const sceneLayers = computed(() => slideLayers.value.filter(layer => !(layer.type === 'audio' && layer.audioAcrossSlides)))
 const dragged = ref<number | null>(null)
 const over = ref<number | null>(null)
 
@@ -18,7 +20,7 @@ function select(id: number) {
   selectLayer(id)
 }
 function move(id: number, target?: Layer) {
-  const layer = slideLayers.value.find(item => item.id === id)
+  const layer = sceneLayers.value.find(item => item.id === id)
   if (!target || !layer || locked(layer) || id === target.id) return
   select(id)
   moveSlideLayer(id, target.id)
@@ -59,8 +61,28 @@ function drop(target: Layer) {
           :disabled="slideIndex >= slides.length - 1" @click="selectSlide(slideIndex + 1)" />
       </template>
     </div>
+    <section v-if="soundtrackLayers.length" aria-label="Soundtrack" class="mb-3 border-b border-default pb-2">
+      <h3 class="px-1 text-xs font-medium text-muted">
+        Soundtrack
+      </h3>
+      <UButton
+        v-for="layer in soundtrackLayers"
+        :key="layer.id"
+        :label="layer.name"
+        :title="layer.name"
+        :aria-pressed="state.selectedLayerId === layer.id"
+        icon="i-lucide-music"
+        :variant="state.selectedLayerId === layer.id ? 'soft' : 'ghost'"
+        color="neutral"
+        size="sm"
+        class="w-full justify-start"
+        :class="{ 'opacity-60': layer.hidden }"
+        :ui="{ label: 'truncate' }"
+        @click="select(layer.id)"
+      />
+    </section>
     <ol aria-label="Layer stacking order" class="space-y-1">
-      <li v-for="(layer, index) in slideLayers" :key="layer.id"
+      <li v-for="(layer, index) in sceneLayers" :key="layer.id"
         class="group flex items-center gap-0.5 rounded-md px-1"
         :class="[state.selectedLayerId === layer.id ? 'bg-primary/15 text-primary' : 'hover:bg-accented',
           over === layer.id && dragged !== layer.id ? 'ring-1 ring-primary' : '']"
@@ -75,13 +97,13 @@ function drop(target: Layer) {
         <div class="flex shrink-0" :class="{ 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100': state.selectedLayerId !== layer.id }">
           <UButton icon="i-lucide-chevron-up" :aria-label="`Move ${layer.name} forward`" title="Move forward"
             color="neutral" variant="ghost" size="xs" :disabled="locked(layer) || index === 0"
-            @click="move(layer.id, slideLayers[index - 1])" />
+            @click="move(layer.id, sceneLayers[index - 1])" />
           <UButton icon="i-lucide-chevron-down" :aria-label="`Move ${layer.name} backward`" title="Move backward"
-            color="neutral" variant="ghost" size="xs" :disabled="locked(layer) || index === slideLayers.length - 1"
-            @click="move(layer.id, slideLayers[index + 1])" />
+            color="neutral" variant="ghost" size="xs" :disabled="locked(layer) || index === sceneLayers.length - 1"
+            @click="move(layer.id, sceneLayers[index + 1])" />
         </div>
       </li>
     </ol>
-    <p v-if="!slideLayers.length" class="py-3 text-xs text-muted">No layers on this slide.</p>
+    <p v-if="!sceneLayers.length" class="py-3 text-xs text-muted">No layers on this slide.</p>
   </section>
 </template>

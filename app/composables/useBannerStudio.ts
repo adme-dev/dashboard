@@ -148,6 +148,10 @@ export function useBannerStudio() {
       if (index >= 0 && !target) throw new Error('A linked layout is missing this slide. Choose Single edit to change this layout.')
       for (const item of items) {
         Object.assign(item, retimeLayerPresence(item, target?.start || 0, target?.end || ranges.at(-1)!.end), { slideId: target?.id, clipToPresence: !!target })
+        if (item.type === 'audio') {
+          item.audioAcrossSlides = target ? undefined : true
+          if (!target) delete item.timelineGroup
+        }
       }
       replacements[key] = board
     }
@@ -180,7 +184,8 @@ export function useBannerStudio() {
 
   function addLayer(partial: Partial<Layer>): Layer {
     const board = state.sets[state.activeKey]
-    if (board && !board.slides && activeSlides.value.length > 1) {
+    const soundtrack = partial.type === 'audio' && partial.audioAcrossSlides
+    if (board && !board.slides?.length && (soundtrack || activeSlides.value.length > 1)) {
       let added: Layer
       withCanvasUndo(() => {
         board.slides = JSON.parse(JSON.stringify(resolveSlides(board)))
@@ -188,7 +193,9 @@ export function useBannerStudio() {
       })
       return added!
     }
-    const slide = state.sets[state.activeKey]?.slides?.length || activeSlides.value.length > 1 ? currentSlide.value : undefined
+    const slide = !soundtrack && (board?.slides?.length || activeSlides.value.length > 1) ? currentSlide.value : undefined
+    const sequenceEnd = activeSlides.value.at(-1)?.end ?? state.duration
+    const soundtrackStart = soundtrack ? Math.max(0, Math.min(sequenceEnd - 0.1, partial.startTime ?? 0)) : 0
     const layer = migrateLayer({
       ...(slide ? { slideId: slide.id, startTime: slide.start, endTime: slide.end, clipToPresence: true } : {}),
       zIndex: activeLayers.value.length ? Math.max(0, ...activeLayers.value.filter(l => !l.slideTransitionFor).map(l => l.zIndex)) + 1 : 1,
@@ -198,6 +205,13 @@ export function useBannerStudio() {
       w: 100,
       h: 40,
       ...partial,
+      ...(soundtrack ? {
+        slideId: undefined,
+        timelineGroup: undefined,
+        clipToPresence: false,
+        startTime: soundtrackStart,
+        endTime: Math.max(soundtrackStart + 0.1, Math.min(sequenceEnd, partial.endTime ?? sequenceEnd))
+      } : {}),
       id: partial.id ?? nextId(),
     })
     if (slide) {
@@ -508,15 +522,18 @@ export function useBannerStudio() {
     const owner = board && (board.slides?.length || activeSlides.value.length > 1)
       ? activeSlides.value.find(slide => slide.id === layerSlideId(board, layer))
       : undefined
-    if (owner) {
+    const bounds = owner ?? (layer.type === 'audio' && layer.audioAcrossSlides
+      ? { start: 0, end: activeSlides.value.at(-1)?.end ?? state.duration }
+      : undefined)
+    if (bounds) {
       props = { ...props }
       if (props.startTime !== undefined || props.endTime !== undefined) {
-        const start = Math.max(owner.start, Math.min(owner.end - 0.1, Number.isFinite(props.startTime) ? props.startTime! : layer.startTime))
-        const end = Math.max(start + 0.1, Math.min(owner.end, Number.isFinite(props.endTime) ? props.endTime! : layer.endTime))
+        const start = Math.max(bounds.start, Math.min(bounds.end - 0.1, Number.isFinite(props.startTime) ? props.startTime! : layer.startTime))
+        const end = Math.max(start + 0.1, Math.min(bounds.end, Number.isFinite(props.endTime) ? props.endTime! : layer.endTime))
         if (!props.keyframes) Object.assign(props, retimeLayerPresence(layer, start, end))
         else Object.assign(props, { startTime: start, endTime: end })
       }
-      if (props.keyframes) props.keyframes = Object.fromEntries(Object.entries(props.keyframes).map(([key, frames]) => [key, frames?.map(frame => ({ ...frame, time: Math.max(owner.start, Math.min(owner.end, frame.time)) })).sort((a, b) => a.time - b.time)]))
+      if (props.keyframes) props.keyframes = Object.fromEntries(Object.entries(props.keyframes).map(([key, frames]) => [key, frames?.map(frame => ({ ...frame, time: Math.max(bounds.start, Math.min(bounds.end, frame.time)) })).sort((a, b) => a.time - b.time)]))
     }
     if (props.rotation !== undefined && Number.isFinite(props.rotation)
       && !Object.prototype.hasOwnProperty.call(props, 'keyframes')) {
@@ -605,7 +622,7 @@ export function useBannerStudio() {
   }
 
   function moveSlideLayer(id: number, targetId: number) {
-    const ordered = [...slideLayers.value]
+    const ordered = slideLayers.value.filter(layer => !(layer.type === 'audio' && layer.audioAcrossSlides))
     const from = ordered.findIndex(layer => layer.id === id)
     const to = ordered.findIndex(layer => layer.id === targetId)
     if (from < 0 || to < 0 || from === to || ordered[from]!.locked) return

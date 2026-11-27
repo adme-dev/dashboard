@@ -47,6 +47,7 @@ export function slideAtTime(board: ArtboardState | undefined, time: number, rang
 
 export function layerSlideId(board: ArtboardState, layer: Layer, ranges?: ReturnType<typeof slideRanges>): string | undefined {
   if (layer.slideTransitionFor) return undefined
+  if (layer.type === 'audio' && layer.audioAcrossSlides) return undefined
   if (layer.slideId) return layer.slideId
   // A full-cycle background stays behind every slide.
   if (layer.type === 'bg' && !layer.clipToPresence) return undefined
@@ -163,6 +164,7 @@ export function editSlides(source: ArtboardState, edit: SlideEdit, nextId: () =>
   if (new Set(board.slides.map(slide => slide.id)).size !== board.slides.length) throw new Error('Duplicate slide identity.')
   const ranges = slideRanges(board.slides)
   const total = ranges.at(-1)!.end
+  const previousTotal = old.at(-1)!.end
   if (total > MAX_SEQUENCE_DURATION) throw new Error('The full design must be 300 seconds or shorter.')
   for (const layer of board.layers) {
     if (layer.slideId) {
@@ -174,10 +176,13 @@ export function editSlides(source: ArtboardState, edit: SlideEdit, nextId: () =>
       mapLayerTime(layer, value => round(Math.max(to.start, Math.min(to.end, to.start + (value - from.start) * scale))), scale)
       if (layer.endTime <= layer.startTime) throw new Error('This duration makes an artwork clip too short. Use a longer slide.')
       layer.clipToPresence = true
-    } else if (old.at(-1)!.end !== total) {
+    } else if (layer.type === 'audio' && layer.audioAcrossSlides && previousTotal !== total) {
+      const end = Math.abs(layer.endTime - previousTotal) < 0.0001 ? total : Math.min(layer.endTime, total)
+      const start = round(Math.max(0, Math.min(layer.startTime, end - MIN_SLIDE_DURATION)))
+      Object.assign(layer, { startTime: start, endTime: end, delay: start })
+    } else if (previousTotal !== total) {
       // Shared audio and backdrops keep their full-sequence timing.
-      const previousEnd = old.at(-1)!.end
-      const scale = total / previousEnd
+      const scale = total / previousTotal
       mapLayerTime(layer, time => round(time * scale), scale)
     }
   }

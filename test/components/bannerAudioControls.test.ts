@@ -113,6 +113,25 @@ it('shows audio controls immediately and hides visual position, alignment and an
   expect(host.textContent).not.toContain('Visual')
   expect(host.querySelector('nav')!.textContent).toBe('Audio')
 })
+
+it('moves existing audio to the soundtrack and back to the current slide', async () => {
+  const { studio: s } = studio()
+  const board = s.state.sets[s.state.activeKey]!
+  board.slides = [{ id: 'intro', name: 'Intro', duration: 4 }, { id: 'offer', name: 'Offer', duration: 4 }]
+  Object.assign(s.selectedLayer.value!, { slideId: 'offer', startTime: 4, endTime: 8 })
+  s.state.currentTime = 5
+  s.setLayoutView('single')
+  s.selectLayer(2)
+  const { click } = await mount(AudioInspector, {}, (app) => {
+    for (const name of ['BannerInspectorPresence', 'BannerAudioTrimModal', 'BannerAssetsPanel']) app.component(name, { render: () => null })
+  })
+  await click('Play across slides')
+  expect(s.selectedLayer.value).toMatchObject({ audioAcrossSlides: true, startTime: 0, endTime: 8 })
+  expect(s.selectedLayer.value!.slideId).toBeUndefined()
+  await click('Move to current slide')
+  expect(s.selectedLayer.value).toMatchObject({ slideId: 'offer', startTime: 4, endTime: 8 })
+  expect(s.selectedLayer.value!.audioAcrossSlides).toBeUndefined()
+})
 it('moves the trim selection without changing its duration and supports keyboard resizing', async () => {
   const props = Vue.reactive({ 'src': '/track.wav', 'duration': 10, 'range': [2, 6], 'onUpdate:range': (value: number[]) => {
     props.range = value

@@ -971,7 +971,7 @@ onUnmounted(() => {
       <ShadcnButton
         variant="outline"
         size="xs"
-        :disabled="selectedForGrouping.length < 2 || !canEditGroup(selectedForGrouping)"
+        :disabled="selectedForGrouping.length < 2 || selectedForGrouping.some(layer => layer.audioAcrossSlides) || !canEditGroup(selectedForGrouping)"
         title="Shift-click layer names to select multiple layers"
         @click="createTimelineGroup"
       >
@@ -1012,7 +1012,14 @@ onUnmounted(() => {
           <!-- Layer labels + keyframe sub-labels -->
           <template v-for="row in displayRows" :key="row.id">
             <div
-              v-if="row.kind === 'group'"
+              v-if="row.kind === 'soundtrack'"
+              class="flex h-7 items-center gap-1.5 border-b border-default bg-elevated px-3 text-xs font-medium text-highlighted"
+            >
+              <UIcon name="i-lucide-music" class="size-3.5 text-muted" />
+              Soundtrack
+            </div>
+            <div
+              v-else-if="row.kind === 'group'"
               class="flex h-9 cursor-pointer items-center gap-1 border-b border-default px-2"
               :class="state.selectedGroupId === row.id ? 'bg-primary/10' : 'bg-elevated/70'"
               @click="chooseGroup(row.id)"
@@ -1224,8 +1231,9 @@ onUnmounted(() => {
 
           <!-- Layer lanes + keyframe tracks -->
           <template v-for="row in displayRows" :key="row.id">
+            <div v-if="row.kind === 'soundtrack'" aria-hidden="true" class="relative z-[2] h-7 border-b border-default bg-elevated" />
             <BannerTimelineGroupBar
-              v-if="row.kind === 'group'"
+              v-else-if="row.kind === 'group'"
               :id="row.id"
               :name="row.name"
               :layers="row.layers"
