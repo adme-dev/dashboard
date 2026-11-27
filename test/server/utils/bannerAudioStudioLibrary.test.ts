@@ -84,6 +84,15 @@ describe('Banner Studio Audio Studio library', () => {
     expect(params).toEqual(['music', clientId, 'bed', expect.stringContaining('hip[ -]?hop'), expect.stringContaining('uplifting'), 30, 13, 12])
   })
 
+  it.each([
+    ['Rock', 'rock|punk|grunge'],
+    ['Background', 'background|underscore|bed|backing track']
+  ] as const)('matches %s to controlled whole words in titles and briefs', async (genre, terms) => {
+    mocks.queryRows.mockResolvedValueOnce([])
+    await listAssets({ kind: 'music', musicFilters: { genre } })
+    expect(mocks.queryRows.mock.lastCall?.[1][1]).toBe(`(^|[^[:alnum:]])(${terms})([^[:alnum:]]|$)`)
+  })
+
   it('signs previews only after checking the job’s client', async () => {
     mocks.queryFresh.mockResolvedValueOnce(null).mockResolvedValueOnce(source)
     mocks.presign.mockResolvedValue('https://assets.example.test/preview.wav')

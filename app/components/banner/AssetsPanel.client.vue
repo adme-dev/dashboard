@@ -207,6 +207,10 @@ const studioLoading = ref(false)
 const studioError = ref('')
 const studioRefresh = ref(0)
 const addingTrack = ref<string | null>(null)
+const renamingUpload = ref<BannerAsset>()
+const uploadName = ref('')
+const savingUploadName = ref(false)
+const uploadNameError = ref('')
 const studioEndpoint = '/api/agency/banner-studio/assets/audio-studio'
 const studioQuery = computed(() => {
   if (!showStudioTracks.value || !state?.project?.id) return null
@@ -244,17 +248,53 @@ const audioTracks = computed(() => {
     }
   })
   if (!showUploads.value || assetsError.value || assetsStatus.value === 'pending') return studio
-  const uploads = assets.value.map(asset => ({
-    id: `upload:${asset.id}`,
-    name: asset.name,
-    url: safeMediaUrl(asset.url),
-    kind: 'Upload' as const,
-    detail: formatSize(asset.fileSize),
-    add: () => handleAssetClick(asset),
-    remove: props.selectionOnly ? undefined : () => deleteAsset(asset)
-  }))
+  const uploads = assets.value.map((asset) => {
+    const name = audioUploadName(asset.name)
+    return {
+      id: `upload:${asset.id}`,
+      name,
+      originalName: asset.name,
+      url: safeMediaUrl(asset.url),
+      kind: 'Upload' as const,
+      detail: formatSize(asset.fileSize),
+      add: () => handleAssetClick({ ...asset, name }),
+      rename: props.selectionOnly ? undefined : () => openAudioRename(asset),
+      remove: props.selectionOnly ? undefined : () => deleteAsset(asset)
+    }
+  })
   return [...studio, ...uploads]
 })
+
+function audioUploadName(name: string): string {
+  const stem = name.trim().replace(/\.[a-z0-9]{2,5}$/i, '')
+  const serializedId = /^(?:[a-f0-9]{20,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i
+  return serializedId.test(stem) ? `Audio upload · ${stem.slice(0, 6).toUpperCase()}` : name
+}
+
+function openAudioRename(asset: BannerAsset) {
+  renamingUpload.value = asset
+  uploadName.value = audioUploadName(asset.name) === asset.name ? asset.name : ''
+  uploadNameError.value = ''
+}
+
+async function saveAudioName() {
+  const asset = renamingUpload.value
+  const name = uploadName.value.trim()
+  if (!asset || !name || savingUploadName.value) return
+  savingUploadName.value = true
+  uploadNameError.value = ''
+  try {
+    const saved = await apiFetch<BannerAsset>(`/api/agency/banner-studio/assets/${asset.id}`, { method: 'PATCH', body: { name } })
+    if (saved.id !== asset.id || saved.name !== name) throw new Error('The new name could not be verified.')
+    renamingUpload.value = undefined
+    toast.add({ title: 'Audio renamed', description: name, color: 'success' })
+    await refreshAssets()
+  } catch (error) {
+    uploadNameError.value = apiErrorDescription(error, 'Could not rename the track. Try again.')
+  } finally {
+    savingUploadName.value = false
+  }
+}
 
 function pauseDesign() {
   useBannerTimeline().pauseTimeline()
@@ -747,6 +787,41 @@ async function deleteAsset(asset: BannerAsset) {
       @close="() => { previewVideoId = undefined }"
       @insert="insertPreviewVideo"
     />
+    <UModal
+      v-if="renamingUpload"
+      :open="true"
+      title="Rename audio track"
+      :dismissible="!savingUploadName"
+      @update:open="(open) => { if (!open) renamingUpload = undefined }"
+    >
+      <template #body>
+        <UFormField label="Track name" :error="uploadNameError || undefined">
+          <UInput
+            v-model="uploadName"
+            :maxlength="255"
+            :disabled="savingUploadName"
+            class="w-full"
+            autofocus
+            @keydown.enter.prevent="saveAudioName"
+          />
+        </UFormField>
+      </template>
+      <template #footer>
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="ghost"
+          :disabled="savingUploadName"
+          @click="renamingUpload = undefined"
+        />
+        <UButton
+          label="Save name"
+          :disabled="!uploadName.trim()"
+          :loading="savingUploadName"
+          @click="saveAudioName"
+        />
+      </template>
+    </UModal>
   </div>
 </template>
 

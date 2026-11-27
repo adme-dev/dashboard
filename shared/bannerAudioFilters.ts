@@ -1,4 +1,4 @@
-export const bannerMusicGenres = ['Acoustic', 'Ambient', 'Cinematic', 'Corporate', 'Electronic', 'Hip-Hop', 'Jazz', 'Orchestral', 'Pop', 'Rock'] as const
+export const bannerMusicGenres = ['Acoustic', 'Ambient', 'Background', 'Cinematic', 'Corporate', 'Electronic', 'Hip-Hop', 'Jazz', 'Orchestral', 'Pop', 'Rock'] as const
 export const bannerMusicMoods = ['Calm', 'Dramatic', 'Energetic', 'Playful', 'Uplifting'] as const
 
 export type BannerMusicGenre = typeof bannerMusicGenres[number]

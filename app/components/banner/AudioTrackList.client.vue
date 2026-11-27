@@ -8,11 +8,13 @@ let stopActivePreview: (() => void) | undefined
 type Track = {
   id: string
   name: string
+  originalName?: string
   url?: string
   kind: 'Music' | 'Voiceover' | 'Upload'
   detail?: string
   durationSec?: number | null
   add: () => void | Promise<void>
+  rename?: () => void
   remove?: () => void | Promise<void>
 }
 
@@ -100,6 +102,11 @@ function removeTrack(track: Track) {
   void track.remove?.()
 }
 
+function renameTrack(track: Track) {
+  if (activeId.value === track.id) stopPreview()
+  track.rename?.()
+}
+
 watch(() => props.tracks, (tracks) => {
   if (activeId.value && !tracks.some(track => track.id === activeId.value)) stopPreview()
   if (failureId.value && !tracks.some(track => track.id === failureId.value)) failureId.value = null
@@ -154,13 +161,24 @@ function clockLabel(seconds: number) {
           @click="togglePreview(track)"
         />
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-semibold text-highlighted" :title="track.name">
+          <p class="truncate text-sm font-semibold text-highlighted" :title="track.originalName || track.name">
             {{ track.name }}
           </p>
           <p class="truncate text-xs text-muted">
             {{ [track.kind, track.detail, displayDuration(track.durationSec)].filter(Boolean).join(' · ') }}
           </p>
         </div>
+        <UButton
+          v-if="track.rename"
+          icon="i-lucide-pencil"
+          :aria-label="`Rename ${track.name}`"
+          title="Rename track"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          class="shrink-0"
+          @click="renameTrack(track)"
+        />
         <UButton
           v-if="track.remove"
           icon="i-lucide-trash-2"

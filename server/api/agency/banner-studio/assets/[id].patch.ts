@@ -1,8 +1,9 @@
 import { transaction } from '~~/server/utils/db'
-import { requireAuth } from '~~/server/utils/auth'
+import { requireWriteAccess } from '~~/server/utils/auth'
+import { hasAllBannerClientAccess, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
 export default defineEventHandler(async (event) => {
-  await requireAuth(event)
+  const user = await requireWriteAccess(event)
   const id = getRouterParam(event, 'id')
 
   if (!id) {
@@ -10,14 +11,22 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
-  const { name, tags } = body
+  const { name, tags } = body ?? {}
+  if (name !== undefined && (typeof name !== 'string' || !name.trim() || name.trim().length > 255)) throw createError({ statusCode: 400, statusMessage: 'Enter an asset name of 1 to 255 characters' })
   if (tags !== undefined && (!Array.isArray(tags) || tags.some(tag => typeof tag !== 'string'))) throw createError({ statusCode: 400, statusMessage: 'Invalid asset tags' })
 
   try {
     return await transaction(async (db) => {
-      const asset = (await db.query<{ tags: string[] | null }>('SELECT tags FROM banner_assets WHERE id = $1 FOR UPDATE', [id])).rows[0]
+      const asset = (await db.query<{ tags: string[] | null, client_id: string | null, uploaded_by: string }>('SELECT tags, client_id, uploaded_by FROM banner_assets WHERE id = $1 FOR UPDATE', [id])).rows[0]
       if (!asset) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
       if (asset.tags?.includes('font') || (Array.isArray(tags) && tags.includes('font'))) throw createError({ statusCode: 409, statusMessage: 'Font metadata is managed by the font library' })
+      if (asset.tags?.includes('audio-studio') || tags?.some((tag: string) => tag === 'audio-studio' || tag.startsWith('audio-studio:'))) {
+        throw createError({ statusCode: 409, statusMessage: 'Track metadata is managed by Audio Studio' })
+      }
+      if (asset.client_id) await requireBannerClientAccess(event, asset.client_id)
+      else if (asset.uploaded_by !== user.id && !await hasAllBannerClientAccess(user)) {
+        throw createError({ statusCode: 403, statusMessage: 'No access to edit this asset' })
+      }
       const sets: string[] = []
       const params: unknown[] = []
       let paramIndex = 1

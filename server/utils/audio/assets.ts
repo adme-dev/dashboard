@@ -11,13 +11,14 @@ const PRESIGN_TTL = 60 * 60 // 1 hour playback URLs
 const genreTerms: Record<BannerMusicGenre, string> = {
   Acoustic: 'acoustic',
   Ambient: 'ambient|atmospheric',
+  Background: 'background|underscore|bed|backing track',
   Cinematic: 'cinematic|film score',
   Corporate: 'corporate',
   Electronic: 'electronic|edm|synthwave|techno|house music',
   'Hip-Hop': 'hip[ -]?hop|rap|trap',
   Jazz: 'jazz|jazzy|bebop',
   Orchestral: 'orchestral|orchestra|symphonic',
-  Pop: 'pop|power pop|indie pop|dance pop',
+  Pop: 'pop',
   Rock: 'rock|punk|grunge'
 }
 const moodTerms: Record<BannerMusicMood, string> = {
