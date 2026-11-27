@@ -108,12 +108,15 @@ const vocals = ref<BannerMusicVocals | ''>('')
 const maxDuration = ref<number | ''>('')
 const addAcrossSlides = ref(false)
 const musicMode = computed(() => audioMode.value && audioCategory.value === 'music')
-const musicFilters = computed(() => musicMode.value ? {
-  genre: genre.value || undefined,
-  mood: mood.value || undefined,
-  vocals: vocals.value || undefined,
-  maxDuration: maxDuration.value || undefined
-} : {})
+const musicFilters = computed(() => {
+  if (!musicMode.value) return {}
+  return {
+    genre: genre.value || undefined,
+    mood: mood.value || undefined,
+    vocals: vocals.value || undefined,
+    maxDuration: maxDuration.value || undefined
+  }
+})
 const hasMusicFilters = computed(() => musicMode.value && !!(genre.value || mood.value || vocals.value || maxDuration.value))
 const showUploads = computed(() => audioMode.value && (audioCategory.value === 'all' || audioCategory.value === 'uploads'))
 const showStudioTracks = computed(() => audioMode.value ? audioCategory.value !== 'uploads' : props.mediaType === 'all' && !props.selectionOnly)
