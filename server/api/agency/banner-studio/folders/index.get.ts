@@ -21,14 +21,15 @@ export default defineEventHandler(async (event) => {
       binned_at + interval '30 days' AS "expiresAt" FROM banner_folders
       WHERE binned_at > now() - interval '30 days' ORDER BY binned_at DESC, position, name, id`)
   }
-  const folders = await queryRowsFresh(`SELECT id, name, parent_id AS "parentId", position,
-    source_path AS "sourcePath" FROM banner_folders WHERE binned_at IS NULL ORDER BY lower(name), name, id`)
-  if (view !== 'library') return folders
-  const prefs = await queryOneFresh(`SELECT dashboard_preferences->'bannerFolderPins' AS pins
-    FROM team_members WHERE id = $1`, [user.id])
+  const activeFolders = `SELECT id, name, parent_id AS "parentId", position,
+    source_path AS "sourcePath" FROM banner_folders WHERE binned_at IS NULL`
+  if (view !== 'library') return queryRowsFresh(`${activeFolders} ORDER BY lower(name), name, id`)
+  const library = await queryOneFresh(`SELECT
+    (SELECT json_agg(f ORDER BY lower(f.name), f.name, f.id) FROM (${activeFolders}) f) AS folders,
+    (SELECT dashboard_preferences->'bannerFolderPins' FROM team_members WHERE id = $1) AS pins`, [user.id])
   return {
-    folders,
-    pinnedIds: Object.keys(prefs?.pins || {}),
+    folders: library?.folders || [],
+    pinnedIds: Object.keys(library?.pins || {}),
     canManage: allClients && !isReadOnlyRole(user.role) && !user.isCustomReadOnly
   }
 })

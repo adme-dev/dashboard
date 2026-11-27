@@ -660,7 +660,17 @@ function clearFilters() {
               <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="pinsExpanded = !pinsExpanded" />
               <template v-if="pinsExpanded">
                 <div v-for="folder in visiblePins" :key="folder.id" class="flex items-center pl-4">
-                  <UButton :label="folder.name" :title="folderIndex.path(folder.id).map(f => f.name).join(' / ')" prefetch-on="interaction" :to="folderLink(folder.id)" icon="i-lucide-folder" :variant="folderFilter === folder.id ? 'soft' : 'ghost'" color="neutral" class="min-w-0 flex-1" :ui="{ label: 'truncate' }" />
+                  <UButton
+                    :label="folder.name"
+                    :title="folderIndex.path(folder.id).map(f => f.name).join(' / ')"
+                    prefetch-on="interaction"
+                    :to="folderLink(folder.id)"
+                    icon="i-lucide-folder"
+                    :variant="folderFilter === folder.id ? 'soft' : 'ghost'"
+                    color="neutral"
+                    class="min-w-0 flex-1"
+                    :ui="{ label: 'truncate' }"
+                  />
                   <UButton icon="i-lucide-pin-off" :aria-label="`Unpin ${folder.name}`" :disabled="pinBusy" size="xs" variant="ghost" color="neutral" @click="setPinned(folder, false)" />
                 </div>
               </template>

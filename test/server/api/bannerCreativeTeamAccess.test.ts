@@ -74,6 +74,18 @@ describe('automatic creative team Banner Studio access', () => {
     expect(m.rows).toHaveBeenCalledWith(expect.stringContaining('FROM banner_folders'))
   })
 
+  it('reads the ordered folder tree and the current designer’s pins in one library query', async () => {
+    const tree = [{ id: 'folder', name: 'Designs', parentId: null }]
+    m.fresh.mockImplementation(async (sql: string) => {
+      if (sql.includes('json_agg(f ORDER BY')) return { folders: tree, pins: { folder: true } }
+      if (sql.includes("rpg.permission_group = 'CREATIVE'")) return { allowed: true }
+      return null
+    })
+    await expect(folders(event({ view: 'library' }))).resolves.toEqual({ folders: tree, pinnedIds: ['folder'], canManage: true })
+    expect(m.fresh).toHaveBeenCalledWith(expect.stringContaining('FROM team_members WHERE id = $1'), [user.id])
+    expect(m.rows).not.toHaveBeenCalled()
+  })
+
   it('does not grant access to social accounts or finance', async () => {
     await expect(requireBannerClientAccess(event(), CLIENT)).resolves.toEqual(user)
     await expect(requireSocialClientAccess(event(), CLIENT)).rejects.toMatchObject({ statusCode: 403 })
