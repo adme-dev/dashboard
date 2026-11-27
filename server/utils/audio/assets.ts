@@ -168,7 +168,12 @@ export async function getAsset(id: string): Promise<AudioAsset | null> {
 export interface ListAssetsFilter {
   kind?: 'voiceover' | 'music'
   clientId?: string | null
+  includeShared?: boolean
+  includeVariants?: boolean
+  playableOnly?: boolean
+  search?: string
   limit?: number
+  offset?: number
 }
 
 /** Scoped library read. Mints a streamUrl per asset. */
@@ -184,18 +189,28 @@ export async function listAssets(filter: ListAssetsFilter = {}): Promise<AudioAs
       where.push('client_id IS NULL')
     } else {
       params.push(filter.clientId)
-      where.push(`client_id = $${params.length}`)
+      const match = `client_id = $${params.length}`
+      where.push(filter.includeShared ? `(${match} OR client_id IS NULL)` : match)
     }
   }
+  if (filter.playableOnly) where.push("r2_key_master IS NOT NULL AND status IN ('ready', 'done')")
+  if (filter.search) {
+    params.push(filter.search)
+    where.push(`strpos(lower(COALESCE(NULLIF(trim(title), ''), kind)), lower($${params.length})) > 0`)
+  }
   params.push(Math.min(filter.limit ?? 100, 200))
-  const sql = `SELECT * FROM audio_assets
+  let sql = `SELECT * FROM audio_assets
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-    ORDER BY created_at DESC LIMIT $${params.length}`
+    ORDER BY created_at DESC, id DESC LIMIT $${params.length}`
+  if (filter.offset) {
+    params.push(filter.offset)
+    sql += ` OFFSET $${params.length}`
+  }
   const rows = await queryRows(sql, params)
   const assets = rows.map(mapRow)
   await Promise.all(assets.map(async (a) => {
     a.streamUrl = await streamUrlFor(a)
-    a.variantUrls = await variantUrlsFor(a)
+    if (filter.includeVariants !== false) a.variantUrls = await variantUrlsFor(a)
   }))
   return assets
 }

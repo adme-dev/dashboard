@@ -7,6 +7,7 @@ import { apiErrorDescription } from '~/utils/apiError'
 import { bannerAssetLayer, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 import { safeMediaUrl } from '~/utils/safe-url'
+import MediaGeneratedThumbnail from '~/components/media/MediaGeneratedThumbnail.vue'
 import { motorstackBrandId as kitMotorStackBrand } from '~~/shared/bannerBrandGuides'
 import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
 
@@ -29,6 +30,7 @@ const apiFetch = $fetch as <T = unknown>(request: string, options?: {
   body?: unknown
   query?: Record<string, unknown>
   headers?: Record<string, string>
+  signal?: AbortSignal
 }) => Promise<T>
 
 const searchQuery = ref('')
@@ -89,13 +91,33 @@ function applySuggestionToSearch(keyword: string) {
 
 const pageSize = 12
 const page = ref(0)
+const studioPage = ref(0)
 const search = refDebounced(searchQuery, 250)
-watch([search, () => props.mediaType], () => { page.value = 0 }, { flush: 'sync' })
-const query = computed(() => ({ mediaType: props.mediaType, search: search.value.trim(), limit: pageSize + 1, offset: page.value * pageSize }))
+const audioMode = computed(() => props.mediaType === 'audio')
+const audioCategories = [
+  { label: 'All tracks', value: 'all' },
+  { label: 'Music', value: 'music' },
+  { label: 'Voiceovers', value: 'voiceover' },
+  { label: 'Uploads', value: 'uploads' }
+] as const
+const audioCategory = ref<(typeof audioCategories)[number]['value']>('all')
+const addAcrossSlides = ref(false)
+const showUploads = computed(() => audioMode.value && (audioCategory.value === 'all' || audioCategory.value === 'uploads'))
+const showStudioTracks = computed(() => audioMode.value ? audioCategory.value !== 'uploads' : props.mediaType === 'all' && !props.selectionOnly)
+watch([search, audioCategory, () => props.mediaType, () => state?.project?.id, () => state?.project?.clientId], () => {
+  page.value = 0
+  studioPage.value = 0
+}, { flush: 'sync' })
+const query = computed(() => ({
+  mediaType: props.mediaType,
+  search: search.value.trim(),
+  limit: pageSize + 1,
+  offset: page.value * pageSize,
+  ...(audioMode.value ? { audioUploadsOnly: 'true' } : {})
+}))
 const { data: assetsData, error: assetsError, status: assetsStatus, refresh: refreshAssets } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets', { query, deep: false })
 const assets = computed(() => (assetsData.value?.assets || []).slice(0, pageSize))
 const hasNext = computed(() => (assetsData.value?.assets.length || 0) > pageSize)
-
 const previewVideoId = ref<string>()
 const previewVideo = computed(() => assets.value.find(asset => asset.id === previewVideoId.value))
 const failedVideoPosters = reactive(new Set<string>())
@@ -108,7 +130,7 @@ watch([page, search, () => props.visible, () => props.mediaType, () => state?.pr
 
 function openVideoPreview(asset: BannerAsset) {
   if (!props.visible || !safeMediaUrl(asset.url)) return
-  useBannerTimeline().pauseTimeline()
+  pauseDesign()
   previewVideoId.value = asset.id
 }
 
@@ -134,7 +156,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function handleAssetClick(asset: BannerAsset) {
+function handleAssetClick(asset: BannerAsset, acrossSlides = audioMode.value && addAcrossSlides.value) {
   if (props.selectionOnly) {
     emit('select', asset)
     return
@@ -146,58 +168,100 @@ function handleAssetClick(asset: BannerAsset) {
       toast.add({ title: 'Image added', description: `${asset.name} · ${count} ${count === 1 ? 'layout' : 'layouts'}`, color: 'success' })
       return
     }
-    addLayer({ ...bannerAssetLayer(asset, activeFormat.value), startTime: 0, endTime: currentSlide.value?.duration || state.duration })
+    const timing = acrossSlides && asset.mimeType?.startsWith('audio/')
+      ? { audioAcrossSlides: true }
+      : { startTime: 0, endTime: currentSlide.value?.duration || state.duration }
+    addLayer({ ...bannerAssetLayer(asset, activeFormat.value), ...timing })
     toast.add({ title: 'Media added', description: asset.name, color: 'success' })
   } catch (error) {
     toast.add({ title: 'Could not add media', description: error instanceof Error ? error.message : 'Choose another file.', color: 'error' })
   }
 }
 
-// Audio Studio — owned, generated audio (voiceover + music) reusable as a layer.
-const voiceoverData = ref<{ assets: AudioAsset[] }>({ assets: [] })
-const musicData = ref<{ assets: AudioAsset[] }>({ assets: [] })
+type StudioTrack = Pick<AudioAsset, 'id' | 'kind' | 'title' | 'streamUrl' | 'durationSec' | 'isInstrumental'>
+const studioData = shallowRef<StudioTrack[]>([])
+const studioLoading = ref(false)
+const studioError = ref('')
+const studioRefresh = ref(0)
+const addingTrack = ref<string | null>(null)
+const studioEndpoint = '/api/agency/banner-studio/assets/audio-studio'
+const studioQuery = computed(() => {
+  if (!showStudioTracks.value || !state?.project?.id) return null
+  const kind = audioMode.value && (audioCategory.value === 'music' || audioCategory.value === 'voiceover') ? audioCategory.value : undefined
+  return { projectId: state.project.id, kind, search: search.value.trim().slice(0, 255), limit: pageSize + 1, offset: studioPage.value * pageSize }
+})
+watch([studioQuery, studioRefresh, () => state?.project?.clientId], async ([nextQuery], _, onCleanup) => {
+  studioData.value = []
+  studioError.value = ''
+  studioLoading.value = !!nextQuery
+  if (!nextQuery) return
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+  try {
+    const result = await apiFetch<{ assets: StudioTrack[] }>(studioEndpoint, { query: nextQuery, signal: controller.signal })
+    if (!controller.signal.aborted) studioData.value = result.assets
+  } catch (error) {
+    if (!controller.signal.aborted) studioError.value = apiErrorDescription(error, 'Try loading the audio library again.')
+  } finally {
+    if (!controller.signal.aborted) studioLoading.value = false
+  }
+}, { immediate: true })
+const hasNextStudio = computed(() => studioData.value.length > pageSize)
+const audioTracks = computed(() => {
+  const studio = studioData.value.slice(0, pageSize).map((track) => {
+    const kind = track.kind === 'music' ? 'Music' as const : 'Voiceover' as const
+    return {
+      id: `studio:${track.id}`,
+      name: track.title?.trim() || kind,
+      url: safeMediaUrl(track.streamUrl),
+      kind,
+      detail: track.kind === 'music' && track.isInstrumental === true ? 'Instrumental' : undefined,
+      durationSec: track.durationSec,
+      add: () => addStudioTrack(track.id)
+    }
+  })
+  if (!showUploads.value || assetsError.value || assetsStatus.value === 'pending') return studio
+  const uploads = assets.value.map(asset => ({
+    id: `upload:${asset.id}`,
+    name: asset.name,
+    url: safeMediaUrl(asset.url),
+    kind: 'Upload' as const,
+    detail: formatSize(asset.fileSize),
+    add: () => handleAssetClick(asset),
+    remove: props.selectionOnly ? undefined : () => deleteAsset(asset)
+  }))
+  return [...studio, ...uploads]
+})
 
-apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { kind: 'voiceover' } })
-  .then((result) => { voiceoverData.value = result })
-  .catch(() => { voiceoverData.value = { assets: [] } })
-
-apiFetch<{ assets: AudioAsset[] }>('/api/agency/audio/assets', { query: { kind: 'music' } })
-  .then((result) => { musicData.value = result })
-  .catch(() => { musicData.value = { assets: [] } })
-
-// Only playable assets (a master uploaded) belong in the picker — in-progress
-// music has no streamUrl yet.
-const audioStudioAssets = computed<AudioAsset[]>(() => [
-  ...(voiceoverData.value?.assets ?? []),
-  ...(musicData.value?.assets ?? [])
-].filter(a => !!a.streamUrl))
-
-function audioLayerName(a: AudioAsset): string {
-  return a.title || (a.kind === 'music' ? 'Music' : 'Voiceover')
+function pauseDesign() {
+  useBannerTimeline().pauseTimeline()
 }
 
-function addAudioLayer(a: AudioAsset) {
-  if (!a.streamUrl) {
-    toast.add({ title: 'Audio unavailable', description: 'This asset has no playable source', color: 'warning' })
-    return
+let mounted = true
+onBeforeUnmount(() => {
+  mounted = false
+})
+function placementIdentity() {
+  return [state?.project?.id, state?.project?.clientId, state?.activeKey, currentSlide?.value?.id].join(':')
+}
+async function addStudioTrack(assetId: string) {
+  const projectId = state?.project?.id
+  if (addingTrack.value || !projectId) return
+  const placement = placementIdentity()
+  const acrossSlides = audioMode.value && addAcrossSlides.value
+  addingTrack.value = `studio:${assetId}`
+  try {
+    const { asset } = await apiFetch<{ asset: BannerAsset }>(studioEndpoint, { method: 'POST', body: { projectId, assetId } })
+    if (!mounted || placement !== placementIdentity()) return
+    if (!asset?.mimeType.startsWith('audio/') || !safeMediaUrl(asset.url)) throw new Error('The saved audio could not be verified.')
+    handleAssetClick(asset, acrossSlides)
+  } catch (error) {
+    if (mounted && placement === placementIdentity()) {
+      toast.add({ title: 'Could not add audio', description: apiErrorDescription(error, 'Try adding the track again.'), color: 'error' })
+    }
+  } finally {
+    addingTrack.value = null
   }
-  const name = audioLayerName(a)
-  addLayer({
-    type: 'audio',
-    src: a.streamUrl,
-    name,
-    x: 0,
-    y: 0,
-    w: 0,
-    h: 0,
-    fit: undefined,
-    volume: 1,
-    animIn: 'none',
-    animOut: 'none',
-    startTime: 0,
-    endTime: currentSlide.value?.duration || state.duration
-  })
-  toast.add({ title: 'Audio added', description: `"${name}" added`, color: 'success' })
 }
 
 async function uploadFiles(files: FileList | File[]) {
@@ -279,8 +343,35 @@ async function deleteAsset(asset: BannerAsset) {
         class="w-full"
       />
     </UFormField>
+    <div
+      v-if="audioMode"
+      role="group"
+      aria-label="Audio category"
+      class="flex flex-wrap gap-1.5"
+    >
+      <UButton
+        v-for="category in audioCategories"
+        :key="category.value"
+        :label="category.label"
+        :aria-pressed="audioCategory === category.value"
+        :color="audioCategory === category.value ? 'primary' : 'neutral'"
+        :variant="audioCategory === category.value ? 'soft' : 'outline'"
+        size="xs"
+        @click="() => { audioCategory = category.value }"
+      />
+    </div>
+    <UButton
+      v-if="audioMode && !selectionOnly"
+      label="Add across slides"
+      icon="i-lucide-music-2"
+      :aria-pressed="addAcrossSlides"
+      :color="addAcrossSlides ? 'primary' : 'neutral'"
+      :variant="addAcrossSlides ? 'soft' : 'outline'"
+      size="xs"
+      @click="() => { addAcrossSlides = !addAcrossSlides }"
+    />
     <UAlert
-      v-if="assetsError"
+      v-if="assetsError && (!audioMode || showUploads)"
       title="Could not load media"
       color="error"
       :actions="[{ label: 'Retry', onClick: () => refreshAssets() }]"
@@ -349,22 +440,59 @@ async function deleteAsset(asset: BannerAsset) {
       />
     </div>
 
-    <!-- Audio Studio — owned voiceover + music -->
-    <div v-if="!selectionOnly && audioStudioAssets.length && (mediaType === 'all' || mediaType === 'audio')" class="space-y-1.5">
-      <p class="text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-muted)">
+    <UAlert
+      v-if="showStudioTracks && studioError"
+      title="Could not load Audio Studio tracks"
+      :description="studioError"
+      color="error"
+      :actions="[{ label: 'Retry', onClick: () => { studioRefresh++ } }]"
+    />
+    <div v-if="audioTracks.length || audioMode" class="space-y-1.5">
+      <p v-if="!audioMode" class="text-xs font-medium text-muted">
         Audio Studio
       </p>
-      <button
-        v-for="a in audioStudioAssets"
-        :key="a.id"
-        type="button"
-        class="w-full flex items-center gap-2 text-left text-[11px] px-2 py-1.5 rounded bg-(--ui-bg) border border-(--ui-border) hover:bg-(--ui-bg-elevated) transition-colors truncate"
-        @click="addAudioLayer(a)"
+      <BannerAudioTrackList
+        v-if="audioTracks.length"
+        :tracks="audioTracks"
+        :busy-id="addingTrack"
+        :selection-only="selectionOnly"
+        :suspended="!visible || !!previewVideo"
+        :playing-design="state?.isPlaying"
+        @preview="pauseDesign"
+      />
+      <p
+        v-if="studioLoading || (showUploads && assetsStatus === 'pending')"
+        role="status"
+        class="py-3 text-center text-xs text-muted"
       >
-        <UIcon :name="a.kind === 'music' ? 'i-lucide-music' : 'i-lucide-mic'" class="w-3.5 h-3.5 shrink-0 text-(--ui-text-muted)" />
-        <span class="truncate">{{ audioLayerName(a) }}</span>
-      </button>
+        Loading audio tracks…
+      </p>
+      <p
+        v-else-if="audioMode && !audioTracks.length && !studioError && (!showUploads || !assetsError)"
+        class="py-4 text-center text-xs text-muted"
+      >
+        {{ search ? 'No matching audio tracks.' : 'No tracks in this category yet.' }}
+      </p>
     </div>
+    <nav v-if="showStudioTracks && (studioPage || hasNextStudio)" aria-label="Audio Studio pages" class="flex items-center justify-between gap-2">
+      <UButton
+        label="Previous"
+        size="xs"
+        color="neutral"
+        variant="outline"
+        :disabled="!studioPage || studioLoading"
+        @click="() => { studioPage-- }"
+      />
+      <span class="text-xs text-muted">Audio Studio · {{ studioPage + 1 }}</span>
+      <UButton
+        label="Next"
+        size="xs"
+        color="neutral"
+        variant="outline"
+        :disabled="!hasNextStudio || studioLoading"
+        @click="() => { studioPage++ }"
+      />
+    </nav>
 
     <!-- AI Image Suggestions -->
     <div v-if="!selectionOnly && (mediaType === 'all' || mediaType === 'image')">
@@ -403,7 +531,7 @@ async function deleteAsset(asset: BannerAsset) {
     </div>
 
     <!-- Assets Grid -->
-    <div v-if="assets.length" class="grid grid-cols-2 gap-1.5">
+    <div v-if="!audioMode && assets.length" class="grid grid-cols-2 gap-1.5">
       <div
         v-for="asset in assets"
         :key="asset.id"
@@ -431,7 +559,6 @@ async function deleteAsset(asset: BannerAsset) {
               class="w-full h-full object-cover"
             >
             <template v-else-if="asset.mimeType?.startsWith('video/')">
-              <UIcon name="i-lucide-film" class="size-9 text-muted" />
               <img
                 v-if="videoPoster(asset)"
                 :src="videoPoster(asset)"
@@ -442,6 +569,14 @@ async function deleteAsset(asset: BannerAsset) {
                 class="absolute inset-0 h-full w-full object-contain"
                 @error="() => { if (asset.thumbnailUrl) failedVideoPosters.add(asset.thumbnailUrl.trim()) }"
               >
+              <MediaGeneratedThumbnail
+                v-else-if="safeMediaUrl(asset.url)"
+                :source-url="asset.url"
+                :alt="`Still from ${asset.name}`"
+                class="pointer-events-none"
+                lazy
+              />
+              <UIcon v-else name="i-lucide-film" class="size-9 text-muted" />
             </template>
             <UIcon v-else-if="asset.mimeType?.startsWith('audio')" name="i-lucide-music" class="w-8 h-8 text-(--ui-text-muted)" />
             <UIcon v-else name="i-lucide-file" class="w-8 h-8 text-(--ui-text-muted)" />
@@ -487,7 +622,7 @@ async function deleteAsset(asset: BannerAsset) {
           </UTooltip>
         </div>
         <!-- Delete overlay -->
-        <div v-if="!selectionOnly" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div v-if="!selectionOnly && !asset.tags?.includes('audio-studio')" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <UButton
             icon="i-lucide-trash-2"
             variant="solid"
@@ -499,13 +634,27 @@ async function deleteAsset(asset: BannerAsset) {
       </div>
     </div>
 
-    <div v-else class="text-center py-6 text-xs text-(--ui-text-muted)">
+    <div v-else-if="!audioMode" class="text-center py-6 text-xs text-(--ui-text-muted)">
       {{ assetsStatus === 'pending' ? 'Loading media…' : searchQuery ? 'No matching media. Try another search.' : 'No media here yet. Upload a file or browse MotorStack.' }}
     </div>
-    <nav v-if="page || hasNext" aria-label="Media pages" class="flex items-center justify-between gap-2">
-      <UButton label="Previous" size="xs" color="neutral" variant="outline" :disabled="!page || assetsStatus === 'pending'" @click="page--" />
-      <span class="text-xs text-muted">Page {{ page + 1 }}</span>
-      <UButton label="Next" size="xs" color="neutral" variant="outline" :disabled="!hasNext || assetsStatus === 'pending'" @click="page++" />
+    <nav v-if="(!audioMode || showUploads) && (page || hasNext)" :aria-label="audioMode ? 'Uploaded audio pages' : 'Media pages'" class="flex items-center justify-between gap-2">
+      <UButton
+        label="Previous"
+        size="xs"
+        color="neutral"
+        variant="outline"
+        :disabled="!page || assetsStatus === 'pending'"
+        @click="() => { page-- }"
+      />
+      <span class="text-xs text-muted">{{ audioMode ? 'Uploads ·' : 'Page' }} {{ page + 1 }}</span>
+      <UButton
+        label="Next"
+        size="xs"
+        color="neutral"
+        variant="outline"
+        :disabled="!hasNext || assetsStatus === 'pending'"
+        @click="() => { page++ }"
+      />
     </nav>
     <BannerVideoAssetPreview
       v-if="previewVideo"

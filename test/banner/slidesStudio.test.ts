@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, reactive, ref } from 'vue'
 import type { BannerProject, Layer } from '../../app/types/banner-studio'
+import { timelineRows } from '../../app/utils/banner-timeline-rows'
 
 vi.stubGlobal('computed', computed)
 vi.stubGlobal('reactive', reactive)
@@ -86,6 +87,39 @@ it('retains inferred boundaries when moving the last owned object to all slides,
   expect(studio.activeLayers.value.find(layer => layer.id === 1)).toMatchObject({ startTime: 0, endTime: 10, clipToPresence: false })
   studio.undo()
   expect(studio.getCanvasData()).toEqual(before)
+})
+
+it('adds a single soundtrack from the second slide and keeps it above individual slide layers', () => {
+  const soundtrack = studio.addLayer({ type: 'audio', name: 'Music bed', audioAcrossSlides: true })
+  expect(soundtrack).toMatchObject({ startTime: 0, endTime: 10, audioAcrossSlides: true, clipToPresence: false })
+  expect(soundtrack.slideId).toBeUndefined()
+  const sceneAudio = studio.addLayer({ type: 'audio', name: 'Offer voiceover' })
+  expect(sceneAudio).toMatchObject({ slideId: 'slide-2', startTime: 6, endTime: 10 })
+  expect(timelineRows(studio.activeLayers.value).slice(0, 2).map(row => row.id)).toEqual(['soundtrack', `layer:${soundtrack.id}`])
+  studio.state.currentTime = 1
+  expect(studio.slideLayers.value.map(layer => layer.id)).toContain(soundtrack.id)
+  expect(studio.slideLayers.value.map(layer => layer.id)).not.toContain(sceneAudio.id)
+})
+
+it('keeps a trimmed soundtrack separate through save, duplicate, delete, and duration edits', () => {
+  studio.setLayoutView('single')
+  const soundtrack = studio.addLayer({ type: 'audio', name: 'Music bed', audioAcrossSlides: true, mediaStart: 2 })
+  studio.changeSlides({ type: 'duration', index: 0, duration: 8 })
+  expect(studio.activeLayers.value.find(layer => layer.id === soundtrack.id)).toMatchObject({ startTime: 0, endTime: 12, mediaStart: 2 })
+  studio.updateLayer(soundtrack.id, { startTime: 1, endTime: 3 })
+  const saved = studio.getCanvasData()
+  studio.loadProject({ id: 'slides', name: 'Reloaded', canvasData: saved } as BannerProject)
+  studio.setLayoutView('single')
+  studio.changeSlides({ type: 'duplicate', index: 0, id: 'scene-copy' })
+  studio.changeSlides({ type: 'delete', index: 0 })
+  const shared = studio.activeLayers.value.filter(layer => layer.type === 'audio')
+  expect(shared).toHaveLength(1)
+  expect(shared[0]).toMatchObject({ id: soundtrack.id, audioAcrossSlides: true, startTime: 1, endTime: 3, mediaStart: 2 })
+  expect(shared[0]!.slideId).toBeUndefined()
+  studio.setLayerSlide(soundtrack.id, 'scene-copy')
+  expect(studio.activeLayers.value.find(layer => layer.id === soundtrack.id)).toMatchObject({ slideId: 'scene-copy', startTime: 0, endTime: 8 })
+  studio.undo()
+  expect(studio.activeLayers.value.find(layer => layer.id === soundtrack.id)).toMatchObject({ audioAcrossSlides: true, startTime: 1, endTime: 3 })
 })
 
 it('bounds property edits to the assigned scene and keeps all retimed frames inside it', () => {

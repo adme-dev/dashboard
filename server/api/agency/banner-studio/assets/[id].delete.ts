@@ -11,6 +11,7 @@ export default defineEventHandler(async (event) => {
     const asset = result.rows[0]
     if (!asset) throw createError({ statusCode: 404, statusMessage: 'Asset not found' })
     if (asset.tags?.includes('font')) throw createError({ statusCode: 409, statusMessage: 'Manage this font through the font library so its references are checked' })
+    if (asset.tags?.includes('audio-studio')) throw createError({ statusCode: 409, statusMessage: 'This shared Audio Studio track may be used by saved designs' })
     await db.query('DELETE FROM banner_assets WHERE id = $1', [id])
     return asset.r2_key
   })

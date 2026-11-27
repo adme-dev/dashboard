@@ -3,7 +3,7 @@ import type { BannerAsset, Layer } from '~/types/banner-studio'
 import { validVideoTrim, videoTrimRange } from '~/utils/banner-video-edit'
 import { safeMediaUrl } from '~/utils/safe-url'
 
-const { state, selectedLayer, updateLayer } = useBannerStudio()
+const { state, selectedLayer, currentSlide, updateLayer, setLayerSlide } = useBannerStudio()
 const { pauseTimeline } = useBannerTimeline()
 const realtime = useBannerRealtime()
 const toast = useToast()
@@ -53,6 +53,19 @@ function replace(asset: BannerAsset) {
   replaceOpen.value = false
   toast.add({ title: 'Audio replaced', description: asset.name, color: 'success' })
 }
+
+function toggleSoundtrack() {
+  const layer = selectedLayer.value
+  if (!layer || sharedDisabled.value) return
+  const slideId = currentSlide.value?.id
+  if (layer.audioAcrossSlides && !slideId) return
+  pauseTimeline()
+  try {
+    setLayerSlide(layer.id, layer.audioAcrossSlides ? slideId! : null)
+  } catch (error) {
+    toast.add({ title: 'Could not change audio playback', description: error instanceof Error ? error.message : 'Try again.', color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -70,6 +83,15 @@ function replace(asset: BannerAsset) {
       preload="metadata"
       @loadedmetadata="loaded"
       @error="failed = true"
+    />
+    <UButton
+      :label="selectedLayer.audioAcrossSlides ? 'Move to current slide' : 'Play across slides'"
+      icon="i-lucide-music-2"
+      :color="selectedLayer.audioAcrossSlides ? 'neutral' : 'primary'"
+      variant="soft"
+      class="w-full justify-center"
+      :disabled="sharedDisabled"
+      @click="toggleSoundtrack"
     />
     <UFormField label="Volume" :help="selectedLayer.muted ? 'Muted. Unmute to hear this level.' : undefined">
       <div class="flex items-center gap-3">

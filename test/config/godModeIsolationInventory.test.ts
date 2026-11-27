@@ -162,8 +162,10 @@ const API_INVENTORY = {
   // Banner folders have three scoped mutations for shared edits and personal pins.
   // Restoring a binned design adds one client-scoped mutation guarded by setDesignBinned.
   // Slide JPEG export adds one team-scoped Banner Studio GET.
-  totalRouteFiles: 2415,
-  mutationRouteFiles: 1319,
+  // Banner audio adds a project-scoped catalogue GET and an idempotent managed-asset POST.
+  // Both use the shared write and project scope helper; the transaction lives in that service.
+  totalRouteFiles: 2417,
+  mutationRouteFiles: 1320,
   explicitlyGuardedMutationFiles: 440,
   guardedMutationFilesWithTransactionCall: 58
 } as const
@@ -217,8 +219,8 @@ describe('God mode route isolation inventory', () => {
   // Governance phase 4 adds one client-scoped read (clients/[id]/change-history.get.ts).
       // Marketing alerts adds one cron-secret POST; no authority bypass.
       // Import image as layers adds a guarded POST and a GET and retires the unguarded decompose POST.
-      totalRouteFiles: 2415,
-      mutationRouteFiles: 1319,
+      totalRouteFiles: 2417,
+      mutationRouteFiles: 1320,
       explicitlyGuardedMutationFiles: 440,
       guardedMutationFilesWithTransactionCall: 58
     })
