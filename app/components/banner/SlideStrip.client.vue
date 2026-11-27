@@ -33,7 +33,12 @@ const slideDrag = useBannerSlideDrag('strip', moveSlide)
         <span class="max-w-28 truncate">{{ index + 1 }} · {{ slide.name }}</span>
         <span class="tabular-nums text-muted">{{ slide.duration }}s</span>
       </UButton>
-      <BannerSlideTransition v-if="index < slides.length - 1" :slide="slide" :index="index" />
+      <BannerSlideTransition
+        v-if="index < slides.length - 1"
+        :slide="slide"
+        :index="index"
+        above-timeline
+      />
     </template>
     <UButton
       aria-label="Add slide"

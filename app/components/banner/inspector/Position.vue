@@ -25,12 +25,12 @@ function flip(key: 'flipX' | 'flipY') {
       <UIcon name="i-lucide-chevron-right" class="size-3 text-dimmed transition-transform group-open:rotate-90" />
       <span class="text-xs font-medium text-muted">Layer</span>
     </summary>
-    <div class="pt-1.5 space-y-4">
-      <div class="grid grid-cols-1 @min-[14rem]:grid-cols-2 gap-4">
+    <div class="space-y-2.5 pt-1.5">
+      <div class="grid grid-cols-1 gap-x-2.5 gap-y-2 @min-[12rem]:grid-cols-2">
         <UFormField v-for="field in dimensions" :key="field.key" :label="field.label">
           <UInput
             type="number"
-            size="sm"
+            size="xs"
             class="w-full"
             :disabled="locked"
             :model-value="selectedLayer[field.key] ?? 0"
