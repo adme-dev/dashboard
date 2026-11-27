@@ -1,16 +1,41 @@
 import type { BannerFolder, BannerProject } from '~/types/banner-studio'
 
-export function bannerFolderPath(folders: BannerFolder[], id: string): BannerFolder[] {
-  const byId = new Map(folders.map(folder => [folder.id, folder]))
-  const path: BannerFolder[] = []
+function pathFromIndex(byId: Map<string, BannerFolder>, id: string): BannerFolder[] {
+  const parts: BannerFolder[] = []
   const seen = new Set<string>()
   let current = byId.get(id)
   while (current && !seen.has(current.id)) {
     seen.add(current.id)
-    path.unshift(current)
+    parts.push(current)
     current = current.parentId ? byId.get(current.parentId) : undefined
   }
-  return path
+  return parts.reverse()
+}
+
+export function indexBannerFolders(folders: BannerFolder[]) {
+  const byId = new Map(folders.map(folder => [folder.id, folder]))
+  const children = new Map<string | null, BannerFolder[]>()
+  for (const folder of folders) {
+    const siblings = children.get(folder.parentId)
+    if (siblings) siblings.push(folder)
+    else children.set(folder.parentId, [folder])
+  }
+  function subtree(id: string) {
+    const result = new Set<string>()
+    const stack = byId.has(id) ? [id] : []
+    while (stack.length) {
+      const next = stack.pop()!
+      if (result.has(next)) continue
+      result.add(next)
+      for (const child of children.get(next) || []) stack.push(child.id)
+    }
+    return result
+  }
+  return { path: (id: string) => pathFromIndex(byId, id), children, subtree }
+}
+
+export function bannerFolderPath(folders: BannerFolder[], id: string) {
+  return pathFromIndex(new Map(folders.map(folder => [folder.id, folder])), id)
 }
 
 /** Source paths are provenance; only an exact, unique path can suggest placement. */
@@ -23,21 +48,22 @@ export function bannerProjectFolderId(project: Pick<BannerProject, 'folderId'>, 
   return project.folderId && folders.some(folder => folder.id === project.folderId) ? project.folderId : null
 }
 
-export function bannerFolderRows(folders: BannerFolder[], expanded: Set<string>, search = '') {
+export function bannerFolderRows(folders: BannerFolder[], expanded: Set<string>, search = '', index = indexBannerFolders(folders)) {
   const query = search.trim().toLocaleLowerCase()
   const matching = new Set<string>()
   if (query) for (const folder of folders) {
-    if (bannerFolderPath(folders, folder.id).map(f => f.name).join(' / ').toLocaleLowerCase().includes(query)) {
-      for (const ancestor of bannerFolderPath(folders, folder.id)) matching.add(ancestor.id)
+    const path = index.path(folder.id)
+    if (path.map(f => f.name).join(' / ').toLocaleLowerCase().includes(query)) {
+      for (const ancestor of path) matching.add(ancestor.id)
     }
   }
   const result: { folder: BannerFolder, depth: number, hasChildren: boolean }[] = []
   const seen = new Set<string>()
   function walk(parentId: string | null, depth: number) {
-    for (const folder of folders.filter(f => f.parentId === parentId)) {
+    for (const folder of index.children.get(parentId) || []) {
       if (seen.has(folder.id) || (query && !matching.has(folder.id))) continue
       seen.add(folder.id)
-      const hasChildren = folders.some(child => child.parentId === folder.id)
+      const hasChildren = index.children.has(folder.id)
       result.push({ folder, depth, hasChildren })
       if (query || expanded.has(folder.id)) walk(folder.id, depth + 1)
     }

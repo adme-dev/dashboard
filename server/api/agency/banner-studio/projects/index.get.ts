@@ -1,5 +1,6 @@
 import { queryRowsFresh } from '~~/server/utils/db'
 import { hasFreshMarketingManagementPermission } from '~~/server/utils/clientScoping'
+import { isUUID } from '~~/server/utils/ids'
 import { requireAuth } from '~~/server/utils/auth'
 import { hasAllBannerClientAccess, hasBannerClientPermission, requireBannerClientAccess } from '~~/server/utils/banner/clientAccess'
 
@@ -15,38 +16,48 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'Marketing permission revoked' })
   }
 
-  try {
-    let sql = `
-      SELECT
-        p.id, p.name, CASE WHEN f.binned_at IS NULL THEN p.folder_id ELSE NULL END AS "folderId",
-        p.client_id AS "clientId",
-        p.binned_at + interval '30 days' AS "expiresAt",
-        c.name AS "clientName",
-        ${(query.view === 'gallery' || query.view === 'bin')
-          ? 'ARRAY(SELECT jsonb_object_keys(p.canvas_data)) AS "formats",'
-          : query.view === 'library'
-            ? `
+  const ids = typeof query.ids === 'string' ? query.ids.split(',') : []
+  if (query.view === 'cards' && (!ids.length || ids.length > 36 || !ids.every(isUUID))) {
+    throw createError({ statusCode: 400, statusMessage: 'Choose up to 36 banner projects' })
+  }
+
+  const formats = 'ARRAY(SELECT jsonb_object_keys(p.canvas_data)) AS "formats"'
+  let artwork = 'p.canvas_data AS "canvasData", p.thumbnail_url AS "thumbnailUrl"'
+  if (query.view === 'catalog') artwork = 'NULL AS "thumbnailUrl"'
+  if (query.view === 'gallery' || query.view === 'bin') artwork = `${formats}, p.thumbnail_url AS "thumbnailUrl"`
+  if (query.view === 'library') artwork = `
         ARRAY(SELECT key FROM jsonb_each(p.canvas_data)) AS "formats",
         ARRAY(SELECT key FROM jsonb_each(p.canvas_data) WHERE
           CASE WHEN jsonb_typeof(value->'layers') = 'array'
             THEN jsonb_array_length(value->'layers') > 0 ELSE FALSE END
-        ) AS "populatedFormats",`
-            : 'p.canvas_data AS "canvasData",'}
-        p.thumbnail_url AS "thumbnailUrl",
-        p.status,
-        p.tags,
-        p.created_by AS "createdBy",
-        p.created_at AS "createdAt",
-        p.updated_at AS "updatedAt"
-      FROM banner_projects p
+        ) AS "populatedFormats", p.thumbnail_url AS "thumbnailUrl"`
+
+  let columns = `
+        p.id, p.name, CASE WHEN f.binned_at IS NULL THEN p.folder_id ELSE NULL END AS "folderId",
+        p.client_id AS "clientId",
+        p.binned_at + interval '30 days' AS "expiresAt",
+        c.name AS "clientName",
+        ${artwork},
+        p.status, p.tags, p.created_by AS "createdBy",
+        p.created_at AS "createdAt", p.updated_at AS "updatedAt"`
+  const detailsOnly = query.view === 'dimensions' || query.view === 'cards'
+  if (detailsOnly) columns = `p.id, ${formats}`
+  if (query.view === 'cards') columns += ', p.thumbnail_url AS "thumbnailUrl"'
+  const joins = detailsOnly
+    ? ''
+    : `
       LEFT JOIN agency_clients c ON p.client_id = c.id
-      LEFT JOIN banner_folders f ON f.id = p.folder_id
+      LEFT JOIN banner_folders f ON f.id = p.folder_id`
+  try {
+    let sql = `
+      SELECT ${columns}
+      FROM banner_projects p ${joins}
       WHERE ${query.view === 'bin'
         ? 'p.binned_at > now() - interval \'30 days\''
         : 'p.binned_at IS NULL'}
     `
 
-    const params: any[] = []
+    const params: unknown[] = []
     let paramIndex = 1
     if (!await hasAllBannerClientAccess(user)) {
       sql += ` AND ((p.client_id IS NULL AND p.created_by = $${paramIndex})`
@@ -60,6 +71,12 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     } else if (!hasBannerClientPermission(user)) {
       sql += ' AND p.client_id IS NULL'
+    }
+
+    if (query.view === 'cards') {
+      sql += ` AND p.id = ANY($${paramIndex}::uuid[])`
+      params.push(ids)
+      paramIndex++
     }
 
     if (clientId) {
@@ -80,7 +97,7 @@ export default defineEventHandler(async (event) => {
       paramIndex++
     }
 
-    sql += ' ORDER BY p.updated_at DESC'
+    if (!detailsOnly) sql += ' ORDER BY p.updated_at DESC'
 
     if (limit) {
       sql += ` LIMIT $${paramIndex}`
@@ -95,7 +112,7 @@ export default defineEventHandler(async (event) => {
     }
 
     return await queryRowsFresh(sql, params)
-  } catch (error: any) {
+  } catch (error) {
     console.error('Failed to fetch banner projects:', error)
     throw createError({ statusCode: 500, statusMessage: 'Failed to fetch banner projects' })
   }

@@ -59,6 +59,8 @@ export function bannerDimensions(canvasData?: Record<string, ArtboardState>, for
   }))].join(' · ')
 }
 
+const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
 export function sortLibrary<T extends { name: string, createdAt?: string, updatedAt?: string, tags?: string[] }>(items: T[], sort: LibrarySort): T[] {
   const timestamp = (item: T) => Date.parse(item.updatedAt || item.createdAt || '') || 0
   const created = (item: T) => {
@@ -66,26 +68,29 @@ export function sortLibrary<T extends { name: string, createdAt?: string, update
     return date ? Date.parse(date) : Number.POSITIVE_INFINITY
   }
   return [...items].sort((a, b) => sort === 'name'
-    ? a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    ? nameCollator.compare(a.name, b.name)
     : (sort === 'created' ? created(a) - created(b) : sort === 'oldest' ? timestamp(a) - timestamp(b) : timestamp(b) - timestamp(a)) || a.name.localeCompare(b.name))
 }
 
-export function filterBannerProjects<T extends LibraryProject>(items: T[], filters: { client: string, tag: string, status: string, search: string }): T[] {
+export function filterBannerProjects<T extends LibraryProject>(items: T[], filters: { client: string, tag: string, status: string, search: string, includeDimensions?: boolean }): T[] {
   const search = filters.search.trim().toLocaleLowerCase()
   return items.filter((project) => {
     if (filters.client === 'unassigned' ? Boolean(project.clientId) : filters.client !== 'all' && project.clientId !== filters.client) return false
     if (filters.tag !== 'all' && !project.tags?.includes(filters.tag)) return false
     if (filters.status !== 'all' && project.status !== filters.status) return false
-    return !search || [project.name, project.clientName, ...project.tags || [], bannerDimensions(project.canvasData, project.formats)]
+    return !search || [project.name, project.clientName, ...project.tags || []]
       .some(value => value?.toLocaleLowerCase().includes(search))
+      || (filters.includeDimensions !== false && bannerDimensions(project.canvasData, project.formats).toLocaleLowerCase().includes(search))
   })
 }
+
+const libraryDateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
 
 export function libraryDate(value?: string): string {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(value || '')
     ? new Date(Number(value!.slice(0, 4)), Number(value!.slice(5, 7)) - 1, Number(value!.slice(8, 10)))
     : new Date(value || '')
-  return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+  return Number.isNaN(date.getTime()) ? 'Date unavailable' : libraryDateFormat.format(date)
 }
 
 export function theBriefCreatedDate(tags: string[]): string | null {
