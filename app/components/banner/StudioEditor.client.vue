@@ -934,10 +934,11 @@ const { activeSize } = useBannerFileSize()
           <BannerLayersPanel v-else-if="leftTab === 'layers'" />
           <BannerSlidesPanel v-else-if="leftTab === 'slides'" />
           <BannerTemplatesPanel v-else-if="leftTab === 'templates'" />
-          <BannerInsertPanel v-else-if="leftTab === 'elements'" @browse-brand="openBrandResource" />
+          <BannerInsertPanel v-else-if="leftTab === 'elements'" :visible="!leftPanelCollapsed" @browse-brand="openBrandResource" />
           <BannerAssetsPanel
             v-else-if="leftTab === 'assets'"
             :media-type="assetMediaType"
+            :visible="!leftPanelCollapsed"
             :motorstack-brand-id="motorstackBrandId(currentBrandKit?.sourceUrl) || undefined"
             inline-motorstack
             @browse-motorstack="openBrandResource('variants')"
