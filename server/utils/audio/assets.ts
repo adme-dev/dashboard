@@ -5,8 +5,29 @@ import { randomUUID } from 'crypto'
 import type { AudioAsset } from '~~/app/types'
 import { queryRows, queryOne } from '~~/server/utils/db'
 import { uploadFile, getPresignedDownloadUrl, isStorageConfigured } from '~~/server/utils/storage'
+import type { BannerMusicFilters, BannerMusicGenre, BannerMusicMood } from '~~/shared/bannerAudioFilters'
 
 const PRESIGN_TTL = 60 * 60 // 1 hour playback URLs
+const genreTerms: Record<BannerMusicGenre, string> = {
+  Acoustic: 'acoustic',
+  Ambient: 'ambient|atmospheric',
+  Background: 'background|underscore|bed|backing track',
+  Cinematic: 'cinematic|film score',
+  Corporate: 'corporate',
+  Electronic: 'electronic|edm|synthwave|techno|house music',
+  'Hip-Hop': 'hip[ -]?hop|rap|trap',
+  Jazz: 'jazz|jazzy|bebop',
+  Orchestral: 'orchestral|orchestra|symphonic',
+  Pop: 'pop',
+  Rock: 'rock|punk|grunge'
+}
+const moodTerms: Record<BannerMusicMood, string> = {
+  Calm: 'calm|relaxed|relaxing|peaceful|soothing|mellow',
+  Dramatic: 'dramatic|epic|tense|suspenseful',
+  Energetic: 'energetic|upbeat|high[ -]energy|fast[ -]paced',
+  Playful: 'playful|fun|whimsical|quirky',
+  Uplifting: 'uplifting|inspiring|inspirational|optimistic|hopeful'
+}
 
 /** Pure: construct the R2 key for an asset's master file. */
 export function buildMasterKey(clientId: string | null, assetId: string, ext: string): string {
@@ -172,6 +193,7 @@ export interface ListAssetsFilter {
   includeVariants?: boolean
   playableOnly?: boolean
   search?: string
+  musicFilters?: BannerMusicFilters
   limit?: number
   offset?: number
 }
@@ -197,6 +219,17 @@ export async function listAssets(filter: ListAssetsFilter = {}): Promise<AudioAs
   if (filter.search) {
     params.push(filter.search)
     where.push(`strpos(lower(COALESCE(NULLIF(trim(title), ''), kind)), lower($${params.length})) > 0`)
+  }
+  const { genre, mood, vocals, maxDuration } = filter.musicFilters ?? {}
+  for (const terms of [genre && genreTerms[genre], mood && moodTerms[mood]]) {
+    if (!terms) continue
+    params.push(`(^|[^[:alnum:]])(${terms})([^[:alnum:]]|$)`)
+    where.push(`concat_ws(' ', title, prompt) ~* $${params.length}`)
+  }
+  if (vocals) where.push(vocals === 'instrumental' ? 'is_instrumental IS TRUE' : 'is_instrumental IS FALSE')
+  if (maxDuration !== undefined) {
+    params.push(maxDuration)
+    where.push(`duration_sec > 0 AND duration_sec <= $${params.length}`)
   }
   params.push(Math.min(filter.limit ?? 100, 200))
   let sql = `SELECT * FROM audio_assets

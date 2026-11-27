@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const m = vi.hoisted(() => ({ rows: vi.fn(), query: vi.fn(), access: vi.fn(), all: vi.fn(), remove: vi.fn(), user: { id: 'staff', role: 'creative', permissionGroups: [] as string[] } }))
 vi.mock('~~/server/utils/db', () => ({ queryRowsFresh: m.rows, transaction: async (fn: (db: unknown) => unknown) => fn({ query: m.query }) }))
-vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => m.user, requireRole: async () => m.user }))
+vi.mock('~~/server/utils/auth', () => ({ requireAuth: async () => m.user, requireRole: async () => m.user, requireWriteAccess: async () => m.user }))
 vi.mock('~~/server/utils/clientScoping', () => ({ hasFreshMarketingManagementPermission: async () => true }))
 vi.mock('~~/server/utils/banner/clientAccess', () => ({ hasBannerClientPermission: () => true, hasAllBannerClientAccess: () => false, requireBannerClientAccess: m.access, requireAllBannerClientAccess: m.all }))
 vi.mock('~~/server/utils/banner/fontDelivery', () => ({ withBannerFontDelivery: async (_event: unknown, fonts: unknown[]) => fonts }))
@@ -73,6 +73,24 @@ describe('font scope boundaries', () => {
     m.query.mockResolvedValueOnce({ rows: [{ tags: [] }] })
     await expect(genericPatch({ id: ID, body: { tags: ['font'] } } as never)).rejects.toMatchObject({ statusCode: 409 })
     expect(m.query.mock.calls.every(([sql]) => sql.includes('FOR UPDATE'))).toBe(true)
+  })
+
+  it('renames client audio only with write access to the asset’s client', async () => {
+    const asset = { id: ID, client_id: CLIENT, uploaded_by: 'other-user', tags: [] }
+    m.query.mockResolvedValueOnce({ rows: [asset] }).mockResolvedValueOnce({ rows: [{ id: ID, name: 'Campaign soundtrack' }] })
+    await expect(genericPatch({ id: ID, body: { name: ' Campaign soundtrack ' } } as never)).resolves.toMatchObject({ name: 'Campaign soundtrack' })
+    expect(m.access).toHaveBeenCalledWith(expect.anything(), CLIENT)
+    expect(m.query.mock.lastCall?.[1]).toEqual(['Campaign soundtrack', ID])
+    m.query.mockClear().mockResolvedValueOnce({ rows: [asset] })
+    m.access.mockRejectedValueOnce(Object.assign(new Error('Forbidden'), { statusCode: 403 }))
+    await expect(genericPatch({ id: ID, body: { name: 'Another name' } } as never)).rejects.toMatchObject({ statusCode: 403 })
+    expect(m.query).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the identity tags on managed Audio Studio copies', async () => {
+    m.query.mockResolvedValueOnce({ rows: [{ tags: ['audio-studio'] }] })
+    await expect(genericPatch({ id: ID, body: { tags: [] } } as never)).rejects.toMatchObject({ statusCode: 409 })
+    expect(m.query).toHaveBeenCalledOnce()
   })
 
   it.each([

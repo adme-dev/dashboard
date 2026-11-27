@@ -166,8 +166,9 @@ const API_INVENTORY = {
   // Both use the shared write and project scope helper; the transaction lives in that service.
   totalRouteFiles: 2417,
   mutationRouteFiles: 1320,
-  explicitlyGuardedMutationFiles: 440,
-  guardedMutationFilesWithTransactionCall: 58
+  // Banner asset metadata now also checks write access and the asset’s client or owner.
+  explicitlyGuardedMutationFiles: 441,
+  guardedMutationFilesWithTransactionCall: 59
 } as const
 
 const EMAIL_TEMPLATE_ROUTE_ADDITIONS = {
@@ -221,8 +222,8 @@ describe('God mode route isolation inventory', () => {
       // Import image as layers adds a guarded POST and a GET and retires the unguarded decompose POST.
       totalRouteFiles: 2417,
       mutationRouteFiles: 1320,
-      explicitlyGuardedMutationFiles: 440,
-      guardedMutationFilesWithTransactionCall: 58
+      explicitlyGuardedMutationFiles: 441,
+      guardedMutationFilesWithTransactionCall: 59
     })
   })
 

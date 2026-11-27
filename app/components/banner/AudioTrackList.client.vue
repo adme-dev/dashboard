@@ -8,11 +8,13 @@ let stopActivePreview: (() => void) | undefined
 type Track = {
   id: string
   name: string
+  originalName?: string
   url?: string
   kind: 'Music' | 'Voiceover' | 'Upload'
   detail?: string
   durationSec?: number | null
   add: () => void | Promise<void>
+  rename?: () => void
   remove?: () => void | Promise<void>
 }
 
@@ -28,6 +30,8 @@ const player = ref<HTMLAudioElement | null>(null)
 const activeId = ref<string | null>(null)
 const loading = ref(false)
 const failureId = ref<string | null>(null)
+const previewTime = ref(0)
+const previewDuration = ref(0)
 let playRequest = 0
 
 function stopPreview() {
@@ -40,6 +44,22 @@ function stopPreview() {
   }
   activeId.value = null
   loading.value = false
+  previewTime.value = 0
+  previewDuration.value = 0
+}
+
+function updatePreviewPosition() {
+  const audio = player.value
+  if (!activeId.value || !audio) return
+  previewTime.value = audio.currentTime
+  previewDuration.value = Number.isFinite(audio.duration) ? audio.duration : 0
+}
+
+function seekPreview(event: Event) {
+  const audio = player.value
+  if (!audio || !previewDuration.value) return
+  audio.currentTime = Number((event.target as HTMLInputElement).value)
+  updatePreviewPosition()
 }
 
 function failPreview() {
@@ -82,6 +102,11 @@ function removeTrack(track: Track) {
   void track.remove?.()
 }
 
+function renameTrack(track: Track) {
+  if (activeId.value === track.id) stopPreview()
+  track.rename?.()
+}
+
 watch(() => props.tracks, (tracks) => {
   if (activeId.value && !tracks.some(track => track.id === activeId.value)) stopPreview()
   if (failureId.value && !tracks.some(track => track.id === failureId.value)) failureId.value = null
@@ -100,21 +125,27 @@ function displayDuration(seconds?: number | null) {
   const rounded = Math.round(seconds)
   return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`
 }
+
+function clockLabel(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`
+}
 </script>
 
 <template>
   <audio
     ref="player"
     preload="none"
+    @loadedmetadata="updatePreviewPosition"
+    @timeupdate="updatePreviewPosition"
     @ended="stopPreview"
     @error="failPreview"
   />
-  <ul aria-label="Audio tracks" class="space-y-1.5">
+  <ul aria-label="Audio tracks" class="space-y-2">
     <li
       v-for="track in tracks"
       :key="track.id"
-      class="rounded-md border border-default bg-default px-2 py-1.5"
-      :class="{ 'border-primary/50': activeId === track.id }"
+      class="rounded-lg border bg-default px-2.5 py-2 transition-colors"
+      :class="activeId === track.id ? 'border-primary/50 bg-primary/5' : 'border-default hover:bg-elevated/45'"
     >
       <div class="flex min-w-0 items-center gap-2">
         <UButton
@@ -122,21 +153,32 @@ function displayDuration(seconds?: number | null) {
           :aria-label="`${activeId === track.id ? 'Stop preview' : 'Play preview'} for ${track.name}`"
           :title="activeId === track.id ? 'Stop preview' : 'Play preview'"
           :disabled="!track.url || suspended"
-          :variant="activeId === track.id ? 'soft' : 'ghost'"
+          variant="soft"
           :color="activeId === track.id ? 'primary' : 'neutral'"
           :ui="{ leadingIcon: activeId === track.id && loading ? 'animate-spin' : undefined }"
-          class="shrink-0"
+          class="size-9 shrink-0 justify-center rounded-full p-0"
           size="sm"
           @click="togglePreview(track)"
         />
         <div class="min-w-0 flex-1">
-          <p class="truncate text-xs font-medium text-highlighted" :title="track.name">
+          <p class="truncate text-sm font-semibold text-highlighted" :title="track.originalName || track.name">
             {{ track.name }}
           </p>
-          <p class="truncate text-[11px] text-muted">
+          <p class="truncate text-xs text-muted">
             {{ [track.kind, track.detail, displayDuration(track.durationSec)].filter(Boolean).join(' · ') }}
           </p>
         </div>
+        <UButton
+          v-if="track.rename"
+          icon="i-lucide-pencil"
+          :aria-label="`Rename ${track.name}`"
+          title="Rename track"
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          class="shrink-0"
+          @click="renameTrack(track)"
+        />
         <UButton
           v-if="track.remove"
           icon="i-lucide-trash-2"
@@ -150,14 +192,34 @@ function displayDuration(seconds?: number | null) {
         />
         <UButton
           :label="selectionOnly ? 'Choose' : 'Add'"
+          :icon="selectionOnly ? undefined : 'i-lucide-plus'"
           :aria-label="`${selectionOnly ? 'Choose' : 'Add'} ${track.name}`"
           :loading="busyId === track.id"
           :disabled="!track.url || !!busyId"
-          variant="soft"
+          color="neutral"
+          variant="outline"
           size="xs"
           class="shrink-0"
           @click="chooseTrack(track)"
         />
+      </div>
+      <div
+        v-if="activeId === track.id && previewDuration"
+        class="mt-2 flex items-center gap-2 text-xs tabular-nums text-muted"
+      >
+        <span>{{ clockLabel(previewTime) }}</span>
+        <input
+          type="range"
+          min="0"
+          :max="previewDuration"
+          step="0.05"
+          :value="previewTime"
+          :aria-label="`Seek preview for ${track.name}`"
+          :aria-valuetext="clockLabel(previewTime)"
+          class="min-w-0 flex-1 accent-(--ui-primary)"
+          @input="seekPreview"
+        >
+        <span>{{ clockLabel(previewDuration) }}</span>
       </div>
       <p v-if="failureId === track.id" role="alert" class="px-2 py-1 text-xs text-error">
         Preview couldn’t play. Try again.

@@ -8,6 +8,7 @@ import { bannerAssetLayer, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
 import { safeMediaUrl } from '~/utils/safe-url'
 import MediaGeneratedThumbnail from '~/components/media/MediaGeneratedThumbnail.vue'
+import { bannerMusicGenres, bannerMusicMoods, type BannerMusicGenre, type BannerMusicMood, type BannerMusicVocals } from '~~/shared/bannerAudioFilters'
 import { motorstackBrandId as kitMotorStackBrand } from '~~/shared/bannerBrandGuides'
 import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
 
@@ -101,13 +102,35 @@ const audioCategories = [
   { label: 'Uploads', value: 'uploads' }
 ] as const
 const audioCategory = ref<(typeof audioCategories)[number]['value']>('all')
+const genre = ref<BannerMusicGenre | ''>('')
+const mood = ref<BannerMusicMood | ''>('')
+const vocals = ref<BannerMusicVocals | ''>('')
+const maxDuration = ref<number | ''>('')
 const addAcrossSlides = ref(false)
+const musicMode = computed(() => audioMode.value && audioCategory.value === 'music')
+const musicFilters = computed(() => {
+  if (!musicMode.value) return {}
+  return {
+    genre: genre.value || undefined,
+    mood: mood.value || undefined,
+    vocals: vocals.value || undefined,
+    maxDuration: maxDuration.value || undefined
+  }
+})
+const hasMusicFilters = computed(() => musicMode.value && !!(genre.value || mood.value || vocals.value || maxDuration.value))
 const showUploads = computed(() => audioMode.value && (audioCategory.value === 'all' || audioCategory.value === 'uploads'))
 const showStudioTracks = computed(() => audioMode.value ? audioCategory.value !== 'uploads' : props.mediaType === 'all' && !props.selectionOnly)
-watch([search, audioCategory, () => props.mediaType, () => state?.project?.id, () => state?.project?.clientId], () => {
+watch([search, audioCategory, musicFilters, () => props.mediaType, () => state?.project?.id, () => state?.project?.clientId], () => {
   page.value = 0
   studioPage.value = 0
 }, { flush: 'sync' })
+
+function clearMusicFilters() {
+  genre.value = ''
+  mood.value = ''
+  vocals.value = ''
+  maxDuration.value = ''
+}
 const query = computed(() => ({
   mediaType: props.mediaType,
   search: search.value.trim(),
@@ -184,11 +207,15 @@ const studioLoading = ref(false)
 const studioError = ref('')
 const studioRefresh = ref(0)
 const addingTrack = ref<string | null>(null)
+const renamingUpload = ref<BannerAsset>()
+const uploadName = ref('')
+const savingUploadName = ref(false)
+const uploadNameError = ref('')
 const studioEndpoint = '/api/agency/banner-studio/assets/audio-studio'
 const studioQuery = computed(() => {
   if (!showStudioTracks.value || !state?.project?.id) return null
   const kind = audioMode.value && (audioCategory.value === 'music' || audioCategory.value === 'voiceover') ? audioCategory.value : undefined
-  return { projectId: state.project.id, kind, search: search.value.trim().slice(0, 255), limit: pageSize + 1, offset: studioPage.value * pageSize }
+  return { projectId: state.project.id, kind, search: search.value.trim().slice(0, 255), ...musicFilters.value, limit: pageSize + 1, offset: studioPage.value * pageSize }
 })
 watch([studioQuery, studioRefresh, () => state?.project?.clientId], async ([nextQuery], _, onCleanup) => {
   studioData.value = []
@@ -215,23 +242,59 @@ const audioTracks = computed(() => {
       name: track.title?.trim() || kind,
       url: safeMediaUrl(track.streamUrl),
       kind,
-      detail: track.kind === 'music' && track.isInstrumental === true ? 'Instrumental' : undefined,
+      detail: track.kind === 'music' && track.isInstrumental != null ? (track.isInstrumental ? 'Instrumental' : 'Vocals') : undefined,
       durationSec: track.durationSec,
       add: () => addStudioTrack(track.id)
     }
   })
   if (!showUploads.value || assetsError.value || assetsStatus.value === 'pending') return studio
-  const uploads = assets.value.map(asset => ({
-    id: `upload:${asset.id}`,
-    name: asset.name,
-    url: safeMediaUrl(asset.url),
-    kind: 'Upload' as const,
-    detail: formatSize(asset.fileSize),
-    add: () => handleAssetClick(asset),
-    remove: props.selectionOnly ? undefined : () => deleteAsset(asset)
-  }))
+  const uploads = assets.value.map((asset) => {
+    const name = audioUploadName(asset.name)
+    return {
+      id: `upload:${asset.id}`,
+      name,
+      originalName: asset.name,
+      url: safeMediaUrl(asset.url),
+      kind: 'Upload' as const,
+      detail: formatSize(asset.fileSize),
+      add: () => handleAssetClick({ ...asset, name }),
+      rename: props.selectionOnly ? undefined : () => openAudioRename(asset),
+      remove: props.selectionOnly ? undefined : () => deleteAsset(asset)
+    }
+  })
   return [...studio, ...uploads]
 })
+
+function audioUploadName(name: string): string {
+  const stem = name.trim().replace(/\.[a-z0-9]{2,5}$/i, '')
+  const serializedId = /^(?:[a-f0-9]{20,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i
+  return serializedId.test(stem) ? `Audio upload · ${stem.slice(0, 6).toUpperCase()}` : name
+}
+
+function openAudioRename(asset: BannerAsset) {
+  renamingUpload.value = asset
+  uploadName.value = audioUploadName(asset.name) === asset.name ? asset.name : ''
+  uploadNameError.value = ''
+}
+
+async function saveAudioName() {
+  const asset = renamingUpload.value
+  const name = uploadName.value.trim()
+  if (!asset || !name || savingUploadName.value) return
+  savingUploadName.value = true
+  uploadNameError.value = ''
+  try {
+    const saved = await apiFetch<BannerAsset>(`/api/agency/banner-studio/assets/${asset.id}`, { method: 'PATCH', body: { name } })
+    if (saved.id !== asset.id || saved.name !== name) throw new Error('The new name could not be verified.')
+    renamingUpload.value = undefined
+    toast.add({ title: 'Audio renamed', description: name, color: 'success' })
+    await refreshAssets()
+  } catch (error) {
+    uploadNameError.value = apiErrorDescription(error, 'Could not rename the track. Try again.')
+  } finally {
+    savingUploadName.value = false
+  }
+}
 
 function pauseDesign() {
   useBannerTimeline().pauseTimeline()
@@ -333,12 +396,12 @@ async function deleteAsset(asset: BannerAsset) {
 </script>
 
 <template>
-  <div class="p-3 space-y-3">
-    <UFormField label="Search media">
+  <div class="@container p-3 space-y-3">
+    <UFormField :label="audioMode ? 'Search audio tracks' : 'Search media'">
       <UInput
         v-model="searchQuery"
         icon="i-lucide-search"
-        placeholder="Search media..."
+        :placeholder="audioMode ? 'Search tracks…' : 'Search media...'"
         size="sm"
         class="w-full"
       />
@@ -347,7 +410,7 @@ async function deleteAsset(asset: BannerAsset) {
       v-if="audioMode"
       role="group"
       aria-label="Audio category"
-      class="flex flex-wrap gap-1.5"
+      class="grid grid-cols-2 gap-1 rounded-lg border border-default bg-elevated/50 p-1 @xs:grid-cols-4"
     >
       <UButton
         v-for="category in audioCategories"
@@ -357,19 +420,56 @@ async function deleteAsset(asset: BannerAsset) {
         :color="audioCategory === category.value ? 'primary' : 'neutral'"
         :variant="audioCategory === category.value ? 'soft' : 'outline'"
         size="xs"
+        class="min-w-0 justify-center whitespace-nowrap rounded-md px-1.5"
         @click="() => { audioCategory = category.value }"
       />
     </div>
-    <UButton
-      v-if="audioMode && !selectionOnly"
-      label="Add across slides"
-      icon="i-lucide-music-2"
-      :aria-pressed="addAcrossSlides"
-      :color="addAcrossSlides ? 'primary' : 'neutral'"
-      :variant="addAcrossSlides ? 'soft' : 'outline'"
-      size="xs"
-      @click="() => { addAcrossSlides = !addAcrossSlides }"
-    />
+    <fieldset v-if="musicMode" class="grid grid-cols-2 gap-2 rounded-lg border border-default bg-elevated/30 p-2.5">
+      <legend class="px-1 text-xs font-medium text-toned">
+        Music filters
+      </legend>
+      <label class="min-w-0 space-y-1 text-xs text-muted">
+        <span>Genre</span>
+        <select v-model="genre" class="audio-filter">
+          <option value="">Any genre</option>
+          <option v-for="option in bannerMusicGenres" :key="option">{{ option }}</option>
+        </select>
+      </label>
+      <label class="min-w-0 space-y-1 text-xs text-muted">
+        <span>Mood</span>
+        <select v-model="mood" class="audio-filter">
+          <option value="">Any mood</option>
+          <option v-for="option in bannerMusicMoods" :key="option">{{ option }}</option>
+        </select>
+      </label>
+      <label class="min-w-0 space-y-1 text-xs text-muted">
+        <span>Vocals</span>
+        <select v-model="vocals" class="audio-filter">
+          <option value="">Any vocals</option>
+          <option value="instrumental">Instrumental</option>
+          <option value="vocals">With vocals</option>
+        </select>
+      </label>
+      <label class="min-w-0 space-y-1 text-xs text-muted">
+        <span>Duration</span>
+        <select v-model="maxDuration" class="audio-filter">
+          <option value="">Any duration</option>
+          <option :value="15">Up to 15s</option>
+          <option :value="30">Up to 30s</option>
+          <option :value="60">Up to 1 min</option>
+          <option :value="180">Up to 3 min</option>
+        </select>
+      </label>
+      <UButton
+        v-if="hasMusicFilters"
+        label="Clear filters"
+        color="neutral"
+        variant="link"
+        size="xs"
+        class="col-span-2 justify-self-end"
+        @click="clearMusicFilters"
+      />
+    </fieldset>
     <UAlert
       v-if="assetsError && (!audioMode || showUploads)"
       title="Could not load media"
@@ -398,22 +498,34 @@ async function deleteAsset(asset: BannerAsset) {
 
     <!-- Upload Zone -->
     <div
-      class="border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer"
-      :class="isDragging ? 'border-(--ui-primary) bg-(--ui-primary)/5' : 'border-(--ui-border) hover:border-(--ui-primary)/40'"
+      :class="[
+        isDragging ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/40',
+        audioMode ? 'flex flex-wrap items-center gap-1.5 rounded-lg border p-1.5' : 'rounded-lg border-2 border-dashed p-4 text-center'
+      ]"
+      class="transition-colors"
       @dragover.prevent="isDragging = true"
       @dragleave="isDragging = false"
       @drop.prevent="onDrop"
     >
-      <UIcon name="i-lucide-upload-cloud" class="w-6 h-6 text-(--ui-text-muted) mx-auto mb-1" />
+      <UIcon v-if="!audioMode" name="i-lucide-upload-cloud" class="w-6 h-6 text-muted mx-auto mb-1" />
       <UButton
-        label="Upload media"
+        :label="audioMode ? 'Upload audio' : 'Upload media'"
+        :icon="audioMode ? 'i-lucide-upload' : undefined"
         variant="ghost"
         color="neutral"
         size="sm"
         :loading="uploading"
         @click="openUpload"
       />
-      <p class="text-xs text-muted">
+      <UButton
+        v-if="audioMode && !selectionOnly"
+        label="Generate with AI"
+        icon="i-lucide-sparkles"
+        variant="ghost"
+        size="sm"
+        @click="openGenerate()"
+      />
+      <p v-if="!audioMode" class="text-xs text-muted">
         Drop files here, then choose one below.
       </p>
       <UInput
@@ -428,7 +540,7 @@ async function deleteAsset(asset: BannerAsset) {
     </div>
 
     <!-- AI Actions -->
-    <div v-if="!selectionOnly" class="flex gap-1.5">
+    <div v-if="!selectionOnly && !audioMode" class="flex gap-1.5">
       <UButton
         label="Generate with AI"
         icon="i-lucide-sparkles"
@@ -440,6 +552,17 @@ async function deleteAsset(asset: BannerAsset) {
       />
     </div>
 
+    <UButton
+      v-if="audioMode && !selectionOnly"
+      label="Add across slides"
+      icon="i-lucide-music-2"
+      :aria-pressed="addAcrossSlides"
+      :color="addAcrossSlides ? 'primary' : 'neutral'"
+      :variant="addAcrossSlides ? 'soft' : 'outline'"
+      size="sm"
+      class="w-full justify-start"
+      @click="() => { addAcrossSlides = !addAcrossSlides }"
+    />
     <UAlert
       v-if="showStudioTracks && studioError"
       title="Could not load Audio Studio tracks"
@@ -471,7 +594,7 @@ async function deleteAsset(asset: BannerAsset) {
         v-else-if="audioMode && !audioTracks.length && !studioError && (!showUploads || !assetsError)"
         class="py-4 text-center text-xs text-muted"
       >
-        {{ search ? 'No matching audio tracks.' : 'No tracks in this category yet.' }}
+        {{ search || hasMusicFilters ? 'No tracks match your search or filters.' : showStudioTracks && !state?.project?.id ? 'Save this design to browse Audio Studio tracks.' : 'No tracks in this category yet.' }}
       </p>
     </div>
     <nav v-if="showStudioTracks && (studioPage || hasNextStudio)" aria-label="Audio Studio pages" class="flex items-center justify-between gap-2">
@@ -664,5 +787,58 @@ async function deleteAsset(asset: BannerAsset) {
       @close="() => { previewVideoId = undefined }"
       @insert="insertPreviewVideo"
     />
+    <UModal
+      v-if="renamingUpload"
+      :open="true"
+      title="Rename audio track"
+      :dismissible="!savingUploadName"
+      @update:open="(open) => { if (!open) renamingUpload = undefined }"
+    >
+      <template #body>
+        <UFormField label="Track name" :error="uploadNameError || undefined">
+          <UInput
+            v-model="uploadName"
+            :maxlength="255"
+            :disabled="savingUploadName"
+            class="w-full"
+            autofocus
+            @keydown.enter.prevent="saveAudioName"
+          />
+        </UFormField>
+      </template>
+      <template #footer>
+        <UButton
+          label="Cancel"
+          color="neutral"
+          variant="ghost"
+          :disabled="savingUploadName"
+          @click="renamingUpload = undefined"
+        />
+        <UButton
+          label="Save name"
+          :disabled="!uploadName.trim()"
+          :loading="savingUploadName"
+          @click="saveAudioName"
+        />
+      </template>
+    </UModal>
   </div>
 </template>
+
+<style scoped>
+.audio-filter {
+  display: block;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.25rem 0.4rem;
+  color: var(--ui-text);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 0.375rem;
+}
+
+.audio-filter:focus-visible {
+  outline: 2px solid var(--ui-primary);
+  outline-offset: 1px;
+}
+</style>
