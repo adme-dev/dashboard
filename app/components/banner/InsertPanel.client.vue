@@ -5,6 +5,8 @@ import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
 import { brandStyleProfile } from '~~/shared/bannerBrandProfiles'
 import type { BrandButtonVariant } from '~/utils/banner-brand-kit'
 
+withDefaults(defineProps<{ visible?: boolean }>(), { visible: true })
+
 const { insertElement } = useBannerInsert()
 const { addBrandGuideButton, addMotorStackImageToAllLayouts } = useBannerStudio()
 const { kit, loading: kitLoading, error: kitError, refresh: refreshKits } = useBannerProjectBrand()
@@ -240,6 +242,7 @@ function addStyleButton(variant: BrandButtonVariant) {
       ref="assetsPanel"
       :key="view"
       :media-type="view"
+      :visible="visible"
       :motorstack-brand-id="brandId || undefined"
       inline-motorstack
       @browse-motorstack="motorstack"

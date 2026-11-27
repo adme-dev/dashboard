@@ -6,10 +6,17 @@ import { refDebounced } from '@vueuse/core'
 import { apiErrorDescription } from '~/utils/apiError'
 import { bannerAssetLayer, type BannerMediaType } from '~/utils/banner-media'
 import { startBannerMediaDrag, endBannerMediaDrag } from '~/utils/banner-media-drag'
+import { safeMediaUrl } from '~/utils/safe-url'
 import { motorstackBrandId as kitMotorStackBrand } from '~~/shared/bannerBrandGuides'
 import { LAYER_IMPORT_MIME_TYPES } from '~~/shared/bannerLayerImport'
 
-const props = withDefaults(defineProps<{ mediaType?: BannerMediaType, selectionOnly?: boolean, motorstackBrandId?: string, inlineMotorstack?: boolean }>(), { mediaType: 'all', selectionOnly: false })
+const props = withDefaults(defineProps<{
+  mediaType?: BannerMediaType
+  selectionOnly?: boolean
+  motorstackBrandId?: string
+  inlineMotorstack?: boolean
+  visible?: boolean
+}>(), { mediaType: 'all', selectionOnly: false, visible: true })
 const emit = defineEmits<{ select: [asset: BannerAsset], browseMotorstack: [] }>()
 const { addLayer, addMediaToLayouts, activeFormat, activeLayers, currentSlide, state } = useBannerStudio()
 const replacementBrand = props.selectionOnly && props.mediaType === 'image' ? useBannerProjectBrand() : undefined
@@ -88,6 +95,34 @@ const query = computed(() => ({ mediaType: props.mediaType, search: search.value
 const { data: assetsData, error: assetsError, status: assetsStatus, refresh: refreshAssets } = useFetch<{ assets: BannerAsset[] }>('/api/agency/banner-studio/assets', { query, deep: false })
 const assets = computed(() => (assetsData.value?.assets || []).slice(0, pageSize))
 const hasNext = computed(() => (assetsData.value?.assets.length || 0) > pageSize)
+
+const previewVideoId = ref<string>()
+const previewVideo = computed(() => assets.value.find(asset => asset.id === previewVideoId.value))
+const failedVideoPosters = reactive(new Set<string>())
+watch(previewVideo, (asset) => {
+  if (!asset) previewVideoId.value = undefined
+})
+watch([page, search, () => props.visible, () => props.mediaType, () => state?.project?.id, () => state?.project?.clientId], () => {
+  previewVideoId.value = undefined
+})
+
+function openVideoPreview(asset: BannerAsset) {
+  if (!props.visible || !safeMediaUrl(asset.url)) return
+  useBannerTimeline().pauseTimeline()
+  previewVideoId.value = asset.id
+}
+
+function insertPreviewVideo() {
+  const asset = previewVideo.value
+  previewVideoId.value = undefined
+  if (asset) handleAssetClick(asset)
+}
+
+function videoPoster(asset: BannerAsset) {
+  const poster = safeMediaUrl(asset.thumbnailUrl)
+  if (poster && !failedVideoPosters.has(poster)) return poster
+}
+
 async function showNewestAssets() {
   if (page.value) page.value = 0
   else await refreshAssets()
@@ -385,7 +420,7 @@ async function deleteAsset(asset: BannerAsset) {
           @dragend="endBannerMediaDrag"
           @click="handleAssetClick(asset)"
         >
-          <div class="aspect-square bg-(--ui-bg) flex items-center justify-center">
+          <div class="relative aspect-square bg-(--ui-bg) flex items-center justify-center">
             <img
               v-if="asset.mimeType?.startsWith('image') && (safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url))"
               :src="safeMediaUrl(asset.thumbnailUrl) || safeMediaUrl(asset.url)"
@@ -395,15 +430,19 @@ async function deleteAsset(asset: BannerAsset) {
               draggable="false"
               class="w-full h-full object-cover"
             >
-            <video
-              v-else-if="asset.mimeType?.startsWith('video')"
-              :src="safeMediaUrl(asset.url)"
-              muted
-              playsinline
-              preload="none"
-              :poster="safeMediaUrl(asset.thumbnailUrl) || undefined"
-              class="w-full h-full object-contain pointer-events-none"
-            />
+            <template v-else-if="asset.mimeType?.startsWith('video/')">
+              <UIcon name="i-lucide-film" class="size-9 text-muted" />
+              <img
+                v-if="videoPoster(asset)"
+                :src="videoPoster(asset)"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable="false"
+                class="absolute inset-0 h-full w-full object-contain"
+                @error="() => { if (asset.thumbnailUrl) failedVideoPosters.add(asset.thumbnailUrl.trim()) }"
+              >
+            </template>
             <UIcon v-else-if="asset.mimeType?.startsWith('audio')" name="i-lucide-music" class="w-8 h-8 text-(--ui-text-muted)" />
             <UIcon v-else name="i-lucide-file" class="w-8 h-8 text-(--ui-text-muted)" />
           </div>
@@ -416,6 +455,21 @@ async function deleteAsset(asset: BannerAsset) {
             </div>
           </div>
         </UButton>
+        <div
+          v-if="asset.mimeType?.startsWith('video/') && safeMediaUrl(asset.url)"
+          class="pointer-events-none absolute inset-x-0 top-0 flex aspect-square items-center justify-center"
+        >
+          <UButton
+            icon="i-lucide-play"
+            :aria-label="`Play preview for ${asset.name}`"
+            title="Play preview"
+            color="neutral"
+            variant="solid"
+            size="sm"
+            class="pointer-events-auto rounded-full shadow-sm"
+            @click.stop="openVideoPreview(asset)"
+          />
+        </div>
         <!-- Import as layers (flat JPEG and PNG pictures) -->
         <div
           v-if="!selectionOnly && canImportAsLayers(asset)"
@@ -453,5 +507,13 @@ async function deleteAsset(asset: BannerAsset) {
       <span class="text-xs text-muted">Page {{ page + 1 }}</span>
       <UButton label="Next" size="xs" color="neutral" variant="outline" :disabled="!hasNext || assetsStatus === 'pending'" @click="page++" />
     </nav>
+    <BannerVideoAssetPreview
+      v-if="previewVideo"
+      :key="previewVideo.id"
+      :asset="previewVideo"
+      :selection-only="selectionOnly"
+      @close="() => { previewVideoId = undefined }"
+      @insert="insertPreviewVideo"
+    />
   </div>
 </template>
