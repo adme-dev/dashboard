@@ -555,7 +555,7 @@ function clearFilters() {
                   color="neutral"
                   variant="ghost"
                   size="xs"
-                  @click="browseSearch = ''"
+                  @click="() => { browseSearch = '' }"
                 />
               </template>
             </UInput>
@@ -600,7 +600,7 @@ function clearFilters() {
               prefetch-on="interaction"
               :to="folderLink('all')"
             />
-            <UButton v-if="canManageFolders" icon="i-lucide-folder-plus" aria-label="Add top-level folder" title="Add folder" color="neutral" variant="ghost" @click="folderEditor = { action: 'add' }" />
+            <UButton v-if="canManageFolders" icon="i-lucide-folder-plus" aria-label="Add top-level folder" title="Add folder" color="neutral" variant="ghost" @click="() => { folderEditor = { action: 'add' } }" />
           </div>
           <UButton
             v-else
@@ -644,7 +644,7 @@ function clearFilters() {
               description="Try loading the folders again."
               color="warning"
               variant="subtle"
-              :actions="[{ label: 'Retry', onClick: refreshFolders }]"
+              :actions="[{ label: 'Retry', onClick: async () => { await refreshFolders() } }]"
               class="mb-2"
             />
             <UButton
@@ -654,10 +654,10 @@ function clearFilters() {
               color="neutral"
               variant="ghost"
               class="mb-2 w-full justify-start"
-              @click="showBin = true"
+              @click="() => { showBin = true }"
             />
             <div v-if="visiblePins.length" class="mb-2 border-b border-default pb-2">
-              <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="pinsExpanded = !pinsExpanded" />
+              <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="() => { pinsExpanded = !pinsExpanded }" />
               <template v-if="pinsExpanded">
                 <div v-for="folder in visiblePins" :key="folder.id" class="flex items-center pl-4">
                   <UButton
@@ -897,7 +897,7 @@ function clearFilters() {
                 variant="ghost"
                 color="neutral"
                 size="xs"
-                @click="downloadTarget = projectById.get(id) || null"
+                @click="() => { downloadTarget = projectById.get(id) || null }"
               />
               <UDropdownMenu :items="dropdownItems(projectById.get(id)!)">
                 <UButton
