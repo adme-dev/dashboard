@@ -4,6 +4,8 @@ import { motorstackBrandId } from '~~/shared/bannerBrandGuides'
 import { FORMATS } from '~/utils/banner-constants'
 import { buildBannerHTML } from '~/utils/banner-html-builder'
 import { isAmbiguousApiFailure } from '~/utils/apiError'
+import { useElementSize, useLocalStorage } from '@vueuse/core'
+import { timelineDockSize } from '~/utils/banner-workspace'
 
 const route = useRoute()
 const router = useRouter()
@@ -53,46 +55,68 @@ const canvasRef = ref<any>(null)
 const { connect: connectRealtime, disconnect: disconnectRealtime, remoteUsers } = useBannerRealtime()
 
 // Timeline resize
-const timelineHeight = ref(360)
+const editorRoot = ref<HTMLElement | null>(null)
+const { height: editorHeight } = useElementSize(editorRoot)
+const preferredTimelineHeight = useLocalStorage('banner-studio-timeline-height', 0)
+const timelineDock = computed(() => timelineDockSize(editorHeight.value, preferredTimelineHeight.value))
 const tlCollapsed = ref(false)
-let tlHeightBeforeCollapse = 360
-const MIN_TL_HEIGHT = 180
-const MAX_TL_HEIGHT = 600
 const tlResizing = ref(false)
 let tlResizeStartY = 0
 let tlResizeStartH = 0
 
-function onTlResizeStart(e: MouseEvent) {
+function onTlResizeStart(e: PointerEvent) {
+  if (e.button !== 0) return
   e.preventDefault()
   tlResizing.value = true
   tlResizeStartY = e.clientY
-  tlResizeStartH = timelineHeight.value
-  window.addEventListener('mousemove', onTlResizeMove)
-  window.addEventListener('mouseup', onTlResizeEnd)
+  tlResizeStartH = tlCollapsed.value ? 0 : timelineDock.value.height
+  window.addEventListener('pointermove', onTlResizeMove)
+  window.addEventListener('pointerup', onTlResizeEnd)
+  window.addEventListener('pointercancel', onTlResizeEnd)
 }
-function onTlResizeMove(e: MouseEvent) {
-  const dy = tlResizeStartY - e.clientY // dragging up = bigger
-  timelineHeight.value = Math.min(MAX_TL_HEIGHT, Math.max(MIN_TL_HEIGHT, tlResizeStartH + dy))
-  if (tlCollapsed.value) tlCollapsed.value = false
+function resizeTimeline(height: number) {
+  const { min, max } = timelineDock.value
+  preferredTimelineHeight.value = Math.min(max, Math.max(min, height))
+  tlCollapsed.value = false
+}
+function onTlResizeMove(e: PointerEvent) {
+  const delta = tlResizeStartY - e.clientY
+  if (tlCollapsed.value && delta <= 0) return
+  resizeTimeline(tlResizeStartH + delta)
 }
 function onTlResizeEnd() {
   tlResizing.value = false
-  window.removeEventListener('mousemove', onTlResizeMove)
-  window.removeEventListener('mouseup', onTlResizeEnd)
+  window.removeEventListener('pointermove', onTlResizeMove)
+  window.removeEventListener('pointerup', onTlResizeEnd)
+  window.removeEventListener('pointercancel', onTlResizeEnd)
 }
-function onTlResizeDblClick() {
-  if (tlCollapsed.value) {
-    tlCollapsed.value = false
-    timelineHeight.value = tlHeightBeforeCollapse
-  } else {
-    tlHeightBeforeCollapse = timelineHeight.value
-    tlCollapsed.value = true
+function toggleTimeline() {
+  tlCollapsed.value = !tlCollapsed.value
+}
+function onTimelineResizeKey(event: KeyboardEvent) {
+  switch (event.key) {
+    case 'ArrowUp':
+      resizeTimeline(tlCollapsed.value ? timelineDock.value.height : timelineDock.value.height + 24)
+      break
+    case 'ArrowDown':
+      resizeTimeline(timelineDock.value.height - 24)
+      break
+    case 'Home':
+      resizeTimeline(timelineDock.value.min)
+      break
+    case 'End':
+      resizeTimeline(timelineDock.value.max)
+      break
+    case 'Enter':
+      toggleTimeline()
+      break
+    default:
+      return
   }
+  event.preventDefault()
+  event.stopPropagation()
 }
-onBeforeUnmount(() => {
-  window.removeEventListener('mousemove', onTlResizeMove)
-  window.removeEventListener('mouseup', onTlResizeEnd)
-})
+onBeforeUnmount(onTlResizeEnd)
 
 let disposed = false
 let rebuildTimer: ReturnType<typeof setTimeout> | null = null
@@ -621,7 +645,7 @@ const { activeSize } = useBannerFileSize()
 
 <template>
   <UAlert v-if="projectLoadError" color="error" title="Could not load this banner" description="Return to the library and reopen the project." class="m-6" />
-  <div v-else class="@container flex flex-col min-w-0 h-[calc(100vh-0px)] overflow-hidden bg-default text-default">
+  <div v-else ref="editorRoot" class="@container flex h-dvh max-h-full min-h-0 min-w-0 flex-col overflow-hidden bg-default text-default">
     <!-- Top Toolbar -->
     <div class="flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-default bg-default shrink-0">
       <UButton
@@ -854,7 +878,7 @@ const { activeSize } = useBannerFileSize()
       <div class="h-4 w-px bg-accented" />
 
       <UButton :label="tlCollapsed ? 'Show timeline' : 'Hide timeline'" icon="i-lucide-panel-bottom" variant="ghost" color="neutral" size="xs"
-        :aria-expanded="!tlCollapsed" @click="onTlResizeDblClick" />
+        :aria-expanded="!tlCollapsed" @click="toggleTimeline" />
 
       <!-- Timeline controls -->
       <div class="flex gap-0.5">
@@ -982,23 +1006,40 @@ const { activeSize } = useBannerFileSize()
       </div>
 
       <!-- Right Inspector -->
-      <div class="w-72 shrink-0 border-l border-default overflow-y-auto bg-elevated">
+      <div class="w-60 shrink-0 overflow-y-auto border-l border-default bg-elevated @min-[80rem]:w-64">
         <BannerInspector />
       </div>
     </div>
 
     <!-- Timeline resize handle -->
     <div
-      class="h-1.5 shrink-0 cursor-row-resize group relative border-t border-default hover:bg-[#4af0a2]/20 transition-colors"
-      :class="tlResizing ? 'bg-[#4af0a2]/30' : ''"
-      @mousedown="onTlResizeStart"
-      @dblclick="onTlResizeDblClick"
+      role="separator"
+      tabindex="0"
+      aria-label="Resize timeline"
+      aria-orientation="horizontal"
+      aria-controls="banner-animation-timeline"
+      :aria-valuemin="0"
+      :aria-valuemax="timelineDock.max"
+      :aria-valuenow="tlCollapsed ? 0 : timelineDock.height"
+      class="group relative h-2.5 shrink-0 cursor-row-resize touch-none border-t border-default bg-elevated transition-colors hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-primary"
+      :class="tlResizing ? 'bg-primary/20' : ''"
+      @pointerdown="onTlResizeStart"
+      @keydown="onTimelineResizeKey"
+      @dblclick="toggleTimeline"
     >
-      <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 mx-auto w-8 rounded transition-colors" :class="tlCollapsed ? 'bg-[#4af0a2]' : 'bg-accented group-hover:bg-[#4af0a2]'" />
+      <div
+        class="absolute inset-x-0 top-1/2 mx-auto h-0.5 w-10 -translate-y-1/2 rounded-full transition-colors group-hover:bg-primary group-focus-visible:bg-primary"
+        :class="tlCollapsed ? 'bg-primary' : 'bg-accented'"
+      />
     </div>
 
     <!-- Timeline -->
-    <div v-show="!tlCollapsed" class="shrink-0" :style="{ height: timelineHeight + 'px' }">
+    <div
+      v-show="!tlCollapsed"
+      id="banner-animation-timeline"
+      class="min-w-0 shrink-0"
+      :style="{ height: timelineDock.height + 'px' }"
+    >
       <BannerTimeline />
     </div>
 

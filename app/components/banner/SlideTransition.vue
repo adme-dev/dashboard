@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BannerSlide } from '~/types/banner-studio'
 
-const props = defineProps<{ slide: BannerSlide, index: number }>()
+const props = defineProps<{ slide: BannerSlide, index: number, aboveTimeline?: boolean }>()
 const { apply } = useBannerSlides()
 const { pauseTimeline } = useBannerTimeline()
 const open = ref(false)
@@ -19,7 +19,11 @@ function save() {
 </script>
 
 <template>
-  <UPopover v-model:open="open">
+  <UPopover
+    v-model:open="open"
+    :content="aboveTimeline ? { side: 'top', align: 'start', sideFlip: false } : undefined"
+    :ui="{ content: 'max-h-(--reka-popper-available-height) overflow-y-auto' }"
+  >
     <UButton
       :aria-label="`Transition after ${slide.name}`"
       :label="slide.transition ? `Fade · ${slide.transition.duration}s` : 'Add transition'"
@@ -29,7 +33,7 @@ function save() {
       size="xs"
     />
     <template #content>
-      <div class="@container w-64 space-y-3 p-3">
+      <div class="@container w-64 max-w-[calc(100vw-1rem)] space-y-2.5 p-3">
         <p class="text-sm font-semibold">
           Transition after {{ slide.name }}
         </p>

@@ -2,7 +2,8 @@
 import { Button as ShadcnButton } from '~/components/ui/button'
 import { timelineRows } from '~/utils/banner-timeline-rows'
 import { computed, ref, toRef, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { layoutName } from '~/utils/banner-workspace'
+import { useElementSize } from '@vueuse/core'
+import { layoutName, timelineFitScale, timelineRulerIntervals, TIMELINE_END_PADDING, TIMELINE_SCALE_MAX, TIMELINE_SCALE_MIN } from '~/utils/banner-workspace'
 import { LAYER_COLORS, LAYER_ICONS } from '~/utils/banner-constants'
 import type { KeyframeProperty, Keyframe, Layer } from '~/types/banner-studio'
 import { hasKeyframes, presetToKeyframes } from '~/composables/useBannerTimeline'
@@ -106,6 +107,7 @@ function isMultiSelected(layerId: number): boolean {
 }
 
 const timelineEl = ref<HTMLElement | null>(null)
+const { width: timelineViewportWidth } = useElementSize(timelineEl)
 const rulerEl = ref<HTMLElement | null>(null)
 const isDraggingPlayhead = ref(false)
 
@@ -170,16 +172,20 @@ function isMaskedLayer(layerId: number): boolean {
 }
 
 // ── Zoom ──────────────────────────────
-const pxPerSec = ref(120)
-const ZOOM_MIN = 40
-const ZOOM_MAX = 400
-const ZOOM_STEP = 20
+const manualScale = ref<number | null>(null)
+const labelWidth = computed(() => timelineViewportWidth.value ? Math.round(Math.max(128, Math.min(224, timelineViewportWidth.value * 0.25))) : 224)
+const availableTrackWidth = computed(() => Math.max(0, timelineViewportWidth.value - labelWidth.value))
+const pxPerSec = computed(() => manualScale.value ?? timelineFitScale(state.duration, availableTrackWidth.value))
 
 function zoomIn() {
-  pxPerSec.value = Math.min(ZOOM_MAX, pxPerSec.value + ZOOM_STEP)
+  manualScale.value = Math.min(TIMELINE_SCALE_MAX, pxPerSec.value * 1.2)
 }
 function zoomOut() {
-  pxPerSec.value = Math.max(ZOOM_MIN, pxPerSec.value - ZOOM_STEP)
+  manualScale.value = Math.max(TIMELINE_SCALE_MIN, pxPerSec.value / 1.2)
+}
+function fitTimeline() {
+  manualScale.value = null
+  if (timelineEl.value) timelineEl.value.scrollLeft = 0
 }
 function onWheelZoom(e: WheelEvent) {
   if (!e.ctrlKey && !e.metaKey) return
@@ -193,7 +199,7 @@ const zoomPercent = computed(() => Math.round(pxPerSec.value / 120 * 100))
 function centerOnPlayhead() {
   const container = timelineEl.value
   if (!container) return
-  const playheadPx = state.currentTime * pxPerSec.value + LABEL_W
+  const playheadPx = state.currentTime * pxPerSec.value + labelWidth.value
   const viewWidth = container.clientWidth
   container.scrollLeft = Math.max(0, playheadPx - viewWidth / 2)
 }
@@ -214,7 +220,6 @@ const LANE_H = 36
 const laneHeight = (layer: Layer) => layer.type === 'video' ? 48 : LANE_H
 const KF_TRACK_H = 20
 const RULER_H = 32
-const LABEL_W = 256
 
 /** Get height for a layer lane (main + expanded keyframe tracks) */
 function getLaneHeight(layerId: number): number {
@@ -230,18 +235,19 @@ function getLaneHeight(layerId: number): number {
 }
 
 // Total timeline width
-const timelineWidth = computed(() => Math.max(600, state.duration * pxPerSec.value + 60))
+const timelineWidth = computed(() => Math.max(availableTrackWidth.value, state.duration * pxPerSec.value + TIMELINE_END_PADDING))
 
 // Time ruler marks
 const rulerMarks = computed(() => {
   const marks: { time: number, x: number, label: string | null }[] = []
-  const step = 0.1
-  for (let t = 0; t <= state.duration + 0.5; t += step) {
-    const rounded = Math.round(t * 10) / 10
+  const { tick, label } = timelineRulerIntervals(pxPerSec.value)
+  const lastIndex = Math.floor(state.duration / tick + 1e-6)
+  for (let index = 0; index <= lastIndex; index++) {
+    const time = Math.round(index * tick * 10) / 10
     marks.push({
-      time: rounded,
-      x: rounded * pxPerSec.value,
-      label: rounded % 1 === 0 ? `${rounded}s` : null
+      time,
+      x: time * pxPerSec.value,
+      label: time % label === 0 ? `${time}s` : null
     })
   }
   return marks
@@ -985,7 +991,7 @@ onUnmounted(() => {
           icon="i-lucide-minus"
           variant="ghost"
           size="xs"
-          :disabled="pxPerSec <= ZOOM_MIN"
+          :disabled="pxPerSec <= TIMELINE_SCALE_MIN"
           @click="zoomOut"
         />
         <span class="text-[10px] text-(--ui-text-muted) w-8 text-center font-mono">{{ zoomPercent }}%</span>
@@ -994,17 +1000,27 @@ onUnmounted(() => {
           icon="i-lucide-plus"
           variant="ghost"
           size="xs"
-          :disabled="pxPerSec >= ZOOM_MAX"
+          :disabled="pxPerSec >= TIMELINE_SCALE_MAX"
           @click="zoomIn"
+        />
+        <UButton
+          aria-label="Fit timeline"
+          title="Fit timeline"
+          icon="i-lucide-scan"
+          :aria-pressed="manualScale === null"
+          :variant="manualScale === null ? 'soft' : 'ghost'"
+          color="neutral"
+          size="xs"
+          @click="fitTimeline"
         />
       </div>
     </div>
 
     <!-- Timeline body -->
     <div ref="timelineEl" aria-label="Timeline tracks" class="flex-1 min-h-0 overflow-auto relative">
-      <div class="flex min-w-fit" :style="{ width: `${LABEL_W + timelineWidth}px` }">
+      <div class="flex min-w-fit" :style="{ width: `${labelWidth + timelineWidth}px` }">
         <!-- Layer labels column -->
-        <div class="sticky left-0 z-30 shrink-0 border-r border-default bg-default" :style="{ width: `${LABEL_W}px` }">
+        <div class="sticky left-0 z-30 shrink-0 border-r border-default bg-default" :style="{ width: `${labelWidth}px` }">
           <!-- Ruler spacer -->
           <div class="sticky top-0 z-40 flex items-center border-b border-default bg-elevated px-3 text-xs font-medium text-muted" :style="{ height: `${RULER_H}px` }">
             Layers

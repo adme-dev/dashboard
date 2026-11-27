@@ -30,6 +30,28 @@ export const WORKSPACE_GAP = 64
 export const WORKSPACE_FOOTER = 64
 export const WORKSPACE_PADDING = 32
 
+export function timelineDockSize(editorHeight: number, preferredHeight = 0) {
+  const available = editorHeight > 0 ? editorHeight : 900
+  const max = Math.max(0, Math.min(640, Math.floor(available * 0.64), Math.floor(available - 112)))
+  const min = Math.min(max, 248, Math.round(available * 0.4))
+  const preferred = Number.isFinite(preferredHeight) && preferredHeight > 0 ? preferredHeight : available * 0.42
+  return { min, max, height: Math.round(Math.min(max, Math.max(min, preferred))) }
+}
+
+export const TIMELINE_SCALE_MIN = 1
+export const TIMELINE_SCALE_MAX = 400
+export const TIMELINE_END_PADDING = 48
+
+export function timelineFitScale(duration: number, trackWidth: number): number {
+  if (!Number.isFinite(duration) || duration <= 0 || trackWidth <= 0) return 120
+  return Math.min(TIMELINE_SCALE_MAX, Math.max(TIMELINE_SCALE_MIN, (trackWidth - TIMELINE_END_PADDING) / duration))
+}
+
+export function timelineRulerIntervals(pixelsPerSecond: number) {
+  const label = [1, 2, 5, 10, 15, 30, 60].find(seconds => seconds * pixelsPerSecond >= 40) ?? 60
+  return { label, tick: label === 1 ? 0.1 : label / 5 }
+}
+
 export function fitLayoutRows(rows: BannerFormat[][], width: number, height: number): number {
   if (!rows.length || width <= 0 || height <= 0) return 1
   const fits = (scale: number) => rows.every(row =>
