@@ -102,6 +102,32 @@ describe('lightweight banner library', () => {
     expect(sql).toContain('client_team_assignments')
     expect(params).toEqual(['staff-id'])
   })
+  it('loads the catalog without inspecting canvases or reading saved thumbnails', async () => {
+    await projects(request({ view: 'catalog' }))
+    const [sql, params] = mocks.rows.mock.calls[0]!
+    expect(sql).not.toMatch(/canvas_data|thumbnail_url/)
+    expect(sql).toContain('client_team_assignments')
+    expect(params).toEqual(['staff-id'])
+  })
+  it('loads only the visible cards within the same client scope', async () => {
+    const id = '22222222-2222-4222-8222-222222222222'
+    await projects(request({ view: 'cards', ids: id }))
+    const [sql, params] = mocks.rows.mock.calls[0]!
+    expect(sql).toContain('p.id = ANY($2::uuid[])')
+    expect(sql).toContain('client_team_assignments')
+    expect(params).toEqual(['staff-id', [id]])
+  })
+  it.each([undefined, '', 'invalid', Array(37).fill('22222222-2222-4222-8222-222222222222').join(',')])('rejects unbounded or invalid card requests', async (ids) => {
+    await expect(projects(request({ view: 'cards', ids }))).rejects.toMatchObject({ statusCode: 400 })
+    expect(mocks.rows).not.toHaveBeenCalled()
+  })
+  it('searches off-page sizes without retrieving thumbnails or names', async () => {
+    await projects(request({ view: 'dimensions' }))
+    const [sql] = mocks.rows.mock.calls[0]!
+    expect(sql).toContain('jsonb_object_keys(p.canvas_data)')
+    expect(sql).toContain('client_team_assignments')
+    expect(sql).not.toMatch(/thumbnail_url|p.name|AS "canvasData"/)
+  })
   it('retains full canvases for existing API consumers', async () => {
     await projects(request())
     expect(mocks.rows.mock.calls[0]![0]).toContain('p.canvas_data AS "canvasData"')

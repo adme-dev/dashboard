@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { BannerProject, BannerProjectSummary, BannerFolder } from '~/types/banner-studio'
-import { bannerFolderPath, bannerFolderRouteId, bannerFolderRows, bannerFolderUrl, bannerProjectFolderId, bannerProjectInFolder } from '~/utils/banner-folders'
+import { indexBannerFolders, bannerFolderRouteId, bannerFolderRows, bannerFolderUrl, bannerProjectFolderId } from '~/utils/banner-folders'
 import { apiErrorDescription, isAmbiguousApiFailure } from '~/utils/apiError'
 import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
 import type { LibrarySort } from '~/utils/banner-library'
+
+type CardDetails = Pick<BannerProjectSummary, 'id' | 'thumbnailUrl' | 'formats'>
+type CatalogProject = Omit<BannerProjectSummary, 'formats'> & { formats?: string[] }
 
 const props = withDefaults(defineProps<{ fullScreen?: boolean }>(), { fullScreen: false })
 const editorBase = computed(() => props.fullScreen ? '/creative/banner-studio' : '/agency/banner-studio')
@@ -35,8 +38,10 @@ const pinBusy = ref(false)
 const pinsExpanded = ref(true)
 const folderSearch = ref('')
 const expandedFolders = ref(new Set<string>())
-const folderData = ref<BannerFolder[]>([])
+const folderData = shallowRef<BannerFolder[]>([])
 const folderError = ref(false)
+const foldersLoaded = ref(false)
+const folderIndex = computed(() => indexBannerFolders(folderData.value))
 const clientFilter = computed(() => typeof route.query.client === 'string' ? route.query.client : 'all')
 const tagFilter = computed(() => typeof route.query.tag === 'string' ? route.query.tag : 'all')
 function selectClient(id: string) {
@@ -61,50 +66,62 @@ watch(showImportModal, (open) => {
 })
 const statusFilter = ref<'all' | 'draft' | 'published'>('all')
 const showDeleteModal = ref(false)
-const deleteTarget = ref<BannerProjectSummary | null>(null)
-const moveTarget = ref<BannerProjectSummary | null>(null)
+const deleteTarget = ref<CatalogProject | null>(null)
+const moveTarget = ref<CatalogProject | null>(null)
 const moveFolderId = ref('__unfiled__')
 const moveBusy = ref(false)
 const moveError = ref('')
-const shareTarget = ref<BannerProjectSummary | null>(null)
-const downloadTarget = ref<BannerProjectSummary | null>(null)
-const renameTarget = ref<BannerProjectSummary | null>(null)
+const shareTarget = ref<CatalogProject | null>(null)
+const downloadTarget = ref<CatalogProject | null>(null)
+const renameTarget = ref<CatalogProject | null>(null)
 const renameValue = ref('')
 const renameBusy = ref(false)
 const renameError = ref('')
 
 const apiFetch = $fetch as <T = unknown>(
   request: string,
-  options?: { method?: string, body?: unknown, headers?: Record<string, string> }
+  options?: { method?: string, body?: unknown, headers?: Record<string, string>, signal?: AbortSignal }
 ) => Promise<T>
 const duplicateIdempotencyKeys = new Map<string, string>()
-const projectsData = shallowRef<BannerProjectSummary[]>([])
+const projectsData = shallowRef<CatalogProject[]>([])
+const details = shallowRef(new Map<string, CardDetails>())
+const dimensions = shallowRef<Map<string, string[]> | null>(null)
+const detailError = ref(false)
+const dimensionError = ref(false)
+let catalogRequest = 0
+let folderRequest = 0
 const fetchStatus = ref<'idle' | 'pending' | 'success' | 'error'>('idle')
 
 async function refreshFolders() {
+  const request = ++folderRequest
   try {
     const result = await apiFetch<{ folders: BannerFolder[], pinnedIds: string[], canManage: boolean }>('/api/agency/banner-studio/folders?view=library')
+    if (request !== folderRequest) return false
+    foldersLoaded.value = true
     folderData.value = result.folders
     pinnedIds.value = result.pinnedIds
     canManageFolders.value = result.canManage
     folderError.value = false
     return true
   } catch {
-    folderError.value = true
+    if (request === folderRequest) folderError.value = true
     return false
   }
 }
 
 async function refresh() {
+  const request = ++catalogRequest
+  void refreshFolders()
   fetchStatus.value = 'pending'
   try {
-    const [projects] = await Promise.all([
-      apiFetch<BannerProjectSummary[]>('/api/agency/banner-studio/projects?view=gallery'),
-      refreshFolders()
-    ])
+    const projects = await apiFetch<CatalogProject[]>('/api/agency/banner-studio/projects?view=catalog')
+    if (request !== catalogRequest) return
+    details.value = new Map()
+    dimensions.value = null
     projectsData.value = projects
     fetchStatus.value = 'success'
   } catch {
+    if (request !== catalogRequest) return
     projectsData.value = []
     fetchStatus.value = 'error'
   }
@@ -114,7 +131,24 @@ onMounted(() => {
   void refresh()
 })
 
-const allProjects = computed(() => projectsData.value || [])
+const searching = computed(() => !!searchQuery.value.trim())
+// Dimension search covers the entire catalog, including projects on other pages.
+watch([projectsData, searching], async ([catalog, active], _, onCleanup) => {
+  dimensionError.value = false
+  if (!active || !catalog.length || dimensions.value) return
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+  try {
+    const rows = await apiFetch<Pick<BannerProjectSummary, 'id' | 'formats'>[]>('/api/agency/banner-studio/projects?view=dimensions', { signal: controller.signal })
+    if (!controller.signal.aborted) dimensions.value = new Map(rows.map(row => [row.id, row.formats]))
+  } catch {
+    if (!controller.signal.aborted) dimensionError.value = true
+  }
+})
+const allProjects = computed(() => {
+  const sizes = searching.value && dimensions.value
+  return sizes ? projectsData.value.map(p => ({ ...p, formats: sizes.get(p.id) })) : projectsData.value
+})
 
 const clients = computed(() => {
   const records = new Map<string, { id: string, name: string, count: number }>()
@@ -143,15 +177,15 @@ const browseSearch = computed({
 })
 const clientProjects = computed(() => filterBannerProjects(allProjects.value, { client: clientFilter.value, tag: 'all', status: 'all', search: '' }))
 const facets = computed(() => bannerLibraryFacets(clientProjects.value))
-const folderRows = computed(() => bannerFolderRows(folderData.value, expandedFolders.value, folderSearch.value))
-const selectedFolderPath = computed(() => bannerFolderPath(folderData.value, folderFilter.value))
-const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folderData.value.map(folder => ({ label: bannerFolderPath(folderData.value, folder.id).map(part => part.name).join(' / '), value: folder.id }))])
-const childFolders = computed(() => folderData.value.filter(f => f.parentId === (folderFilter.value === 'all' ? null : folderFilter.value)))
+const folderRows = computed(() => bannerFolderRows(folderData.value, expandedFolders.value, folderSearch.value, folderIndex.value))
+const selectedFolderPath = computed(() => folderIndex.value.path(folderFilter.value))
+const folderOptions = computed(() => [{ label: 'Unfiled', value: '__unfiled__' }, ...folderData.value.map(folder => ({ label: folderIndex.value.path(folder.id).map(part => part.name).join(' / '), value: folder.id }))])
+const childFolders = computed(() => folderIndex.value.children.get(folderFilter.value === 'all' ? null : folderFilter.value) || [])
 const visiblePins = computed(() => folderData.value.filter(folder => pinnedIds.value.includes(folder.id)
-  && bannerFolderPath(folderData.value, folder.id).map(f => f.name).join(' / ').toLowerCase().includes(folderSearch.value.trim().toLowerCase())))
+  && folderIndex.value.path(folder.id).map(f => f.name).join(' / ').toLowerCase().includes(folderSearch.value.trim().toLowerCase())))
 
 function folderLink(id: string) {
-  return { path: bannerFolderUrl(editorBase.value, bannerFolderPath(folderData.value, id)), query: { ...route.query, tab: undefined } }
+  return { path: bannerFolderUrl(editorBase.value, folderIndex.value.path(id)), query: { ...route.query, tab: undefined } }
 }
 function clearFolder() {
   const path = browseTab.value === 'folders' ? editorBase.value + '/folders' : editorBase.value
@@ -189,8 +223,7 @@ async function setPinned(folder: BannerFolder, pinned: boolean) {
   }
 }
 
-const trashSubfolders = computed(() => folderData.value.filter(folder => folder.id !== trashTarget.value?.id
-  && bannerFolderPath(folderData.value, folder.id).some(part => part.id === trashTarget.value?.id)).length)
+const trashSubfolders = computed(() => trashTarget.value ? Math.max(0, folderIndex.value.subtree(trashTarget.value.id).size - 1) : 0)
 
 async function trashFolder() {
   if (!trashTarget.value || trashBusy.value) return
@@ -232,23 +265,57 @@ function toggleFolder(id: string) {
 }
 const categories = computed(() => facets.value.categories)
 const visibleCategories = computed(() => categories.value.filter(tag => tag.replace(/^category:/, '').toLocaleLowerCase().includes(tagSearch.value.trim().toLocaleLowerCase())))
-const projects = computed(() => sortLibrary(filterBannerProjects(clientProjects.value, {
-  client: 'all', tag: tagFilter.value, status: statusFilter.value, search: searchQuery.value
-}).filter(p => bannerProjectInFolder(p, folderFilter.value, folderData.value)), sort.value))
+const selectedFolderIds = computed(() => folderIndex.value.subtree(folderFilter.value))
+const projects = computed(() => {
+  const filtered = filterBannerProjects(clientProjects.value, {
+    client: 'all', tag: tagFilter.value, status: statusFilter.value, search: searchQuery.value, includeDimensions: !!dimensions.value
+  })
+  if (folderFilter.value === 'all') return sortLibrary(filtered, sort.value)
+  const inFolder = filtered.filter(p => folderFilter.value === 'unfiled' ? !p.folderId : !!p.folderId && selectedFolderIds.value.has(p.folderId))
+  return sortLibrary(inFolder, sort.value)
+})
 const visibleProjects = computed(() => projects.value.slice((page.value - 1) * pageSize, page.value * pageSize))
-const libraryItems = computed(() => visibleProjects.value.map(p => ({
-  id: p.id, name: p.name, clientId: p.clientId, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
-  category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status, dimensions: bannerDimensions(undefined, p.formats), type: `${p.formats.length} size${p.formats.length === 1 ? '' : 's'} · Editable`,
-  date: p.updatedAt || p.createdAt, thumbnailUrl: p.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, hasLayouts: p.formats.length > 0,
-  sourceCreatedDate: p.tags?.includes('source:thebrief') ? theBriefCreatedDate(p.tags) : undefined,
-  to: `${editorBase.value}/${p.id}`
-})))
-const projectById = computed(() => new Map(allProjects.value.map(p => [p.id, p])))
+watch(visibleProjects, async (visible, _, onCleanup) => {
+  detailError.value = false
+  const missing = visible.filter(p => !details.value.has(p.id))
+  if (!missing.length) return
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+  try {
+    const ids = missing.map(p => p.id).join(',')
+    const rows = await apiFetch<CardDetails[]>(`/api/agency/banner-studio/projects?view=cards&ids=${ids}`, { signal: controller.signal })
+    if (controller.signal.aborted) return
+    const updated = new Map(details.value)
+    for (const row of rows) updated.set(row.id, row)
+    details.value = updated
+  } catch {
+    if (!controller.signal.aborted) detailError.value = true
+  }
+})
+const libraryItems = computed(() => visibleProjects.value.map((p) => {
+  const detail = details.value.get(p.id)
+  const formats = detail?.formats || p.formats
+  return {
+    id: p.id, name: p.name, clientId: p.clientId, client: p.clientName || (p.clientId ? 'Unnamed client' : 'Unassigned'),
+    category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status,
+    dimensions: formats ? bannerDimensions(undefined, formats) : '',
+    type: formats ? `${formats.length} size${formats.length === 1 ? '' : 's'} · Editable` : 'Editable',
+    date: p.updatedAt || p.createdAt, thumbnailUrl: detail?.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, hasLayouts: !!formats?.length,
+    sourceCreatedDate: p.tags?.includes('source:thebrief') ? theBriefCreatedDate(p.tags) : undefined,
+    to: `${editorBase.value}/${p.id}`
+  }
+}))
+const projectById = computed(() => new Map(visibleProjects.value.map(p => [p.id, p])))
 watch([searchQuery, statusFilter, clientFilter, folderFilter, tagFilter, sort], () => {
   page.value = 1
 })
 watch(projects, (list) => {
   page.value = Math.min(page.value, Math.max(1, Math.ceil(list.length / pageSize)))
+})
+const loadingProjects = computed(() => {
+  if (fetchStatus.value !== 'success') return fetchStatus.value !== 'error'
+  if (folderFilter.value !== 'all' && !foldersLoaded.value && !folderError.value) return true
+  return searching.value && !dimensions.value && !dimensionError.value && !projects.value.length && allProjects.value.length > 0
 })
 const sortItems = [
   { label: 'Recently modified', value: 'modified' },
@@ -261,17 +328,17 @@ function newProject() {
   router.push({ path: `${editorBase.value}/new`, query: selectedFolderPath.value.length ? { folder: folderFilter.value } : {} })
 }
 
-function editProject(p: BannerProjectSummary) {
+function editProject(p: CatalogProject) {
   router.push(`${editorBase.value}/${p.id}`)
 }
 
-function moveProject(p: BannerProjectSummary) {
+function moveProject(p: CatalogProject) {
   moveTarget.value = p
   moveFolderId.value = bannerProjectFolderId(p, folderData.value) || '__unfiled__'
   moveError.value = ''
 }
 
-function renameProject(p: BannerProjectSummary) {
+function renameProject(p: CatalogProject) {
   renameTarget.value = p
   renameValue.value = p.name
   renameError.value = ''
@@ -303,7 +370,7 @@ async function saveProjectFolder() {
     if (folderId && !folderData.value.some(folder => folder.id === folderId)) throw new Error('Choose an existing folder')
     const saved = await apiFetch<{ id: string, folderId: string | null }>(`/api/agency/banner-studio/projects/${moveTarget.value.id}/folder`, { method: 'PATCH', body: { folderId } })
     if (saved.id !== moveTarget.value.id || saved.folderId !== folderId) throw new Error('The folder change could not be verified')
-    toast.add({ title: 'Moved banner', description: folderId ? `Saved in ${bannerFolderPath(folderData.value, folderId).map(part => part.name).join(' / ')}` : 'Saved in Unfiled', color: 'success' })
+    toast.add({ title: 'Moved banner', description: folderId ? `Saved in ${folderIndex.value.path(folderId).map(part => part.name).join(' / ')}` : 'Saved in Unfiled', color: 'success' })
     moveTarget.value = null
     await refresh()
   } catch (cause) {
@@ -313,7 +380,7 @@ async function saveProjectFolder() {
   }
 }
 
-async function duplicateProject(p: BannerProjectSummary) {
+async function duplicateProject(p: CatalogProject) {
   const idempotencyKey = duplicateIdempotencyKeys.get(p.id) || crypto.randomUUID()
   duplicateIdempotencyKeys.set(p.id, idempotencyKey)
   try {
@@ -338,7 +405,7 @@ async function duplicateProject(p: BannerProjectSummary) {
   }
 }
 
-function confirmDelete(p: BannerProjectSummary) {
+function confirmDelete(p: CatalogProject) {
   deleteTarget.value = p
   showDeleteModal.value = true
 }
@@ -362,7 +429,7 @@ const statusItems = [
   { label: 'Published', value: 'published' }
 ]
 
-const dropdownItems = (p: BannerProjectSummary) => [
+const dropdownItems = (p: CatalogProject) => [
   [
     { label: 'Edit', icon: 'i-lucide-pencil', onSelect: () => editProject(p) },
     { label: 'Share', icon: 'i-lucide-share-2', onSelect: () => { shareTarget.value = p } },
@@ -488,7 +555,7 @@ function clearFilters() {
                   color="neutral"
                   variant="ghost"
                   size="xs"
-                  @click="browseSearch = ''"
+                  @click="() => { browseSearch = '' }"
                 />
               </template>
             </UInput>
@@ -530,9 +597,10 @@ function clearFilters() {
               :variant="folderFilter === 'all' ? 'soft' : 'ghost'"
               color="neutral"
               class="min-w-0 flex-1 justify-start"
+              prefetch-on="interaction"
               :to="folderLink('all')"
             />
-            <UButton v-if="canManageFolders" icon="i-lucide-folder-plus" aria-label="Add top-level folder" title="Add folder" color="neutral" variant="ghost" @click="folderEditor = { action: 'add' }" />
+            <UButton v-if="canManageFolders" icon="i-lucide-folder-plus" aria-label="Add top-level folder" title="Add folder" color="neutral" variant="ghost" @click="() => { folderEditor = { action: 'add' } }" />
           </div>
           <UButton
             v-else
@@ -576,7 +644,7 @@ function clearFilters() {
               description="Try loading the folders again."
               color="warning"
               variant="subtle"
-              :actions="[{ label: 'Retry', onClick: refresh }]"
+              :actions="[{ label: 'Retry', onClick: async () => { await refreshFolders() } }]"
               class="mb-2"
             />
             <UButton
@@ -586,13 +654,23 @@ function clearFilters() {
               color="neutral"
               variant="ghost"
               class="mb-2 w-full justify-start"
-              @click="showBin = true"
+              @click="() => { showBin = true }"
             />
             <div v-if="visiblePins.length" class="mb-2 border-b border-default pb-2">
-              <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="pinsExpanded = !pinsExpanded" />
+              <UButton label="Pinned folders" icon="i-lucide-pin" :trailing-icon="pinsExpanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" :aria-expanded="pinsExpanded" size="sm" variant="ghost" color="neutral" @click="() => { pinsExpanded = !pinsExpanded }" />
               <template v-if="pinsExpanded">
                 <div v-for="folder in visiblePins" :key="folder.id" class="flex items-center pl-4">
-                  <UButton :label="folder.name" :title="bannerFolderPath(folderData, folder.id).map(f => f.name).join(' / ')" :to="folderLink(folder.id)" icon="i-lucide-folder" :variant="folderFilter === folder.id ? 'soft' : 'ghost'" color="neutral" class="min-w-0 flex-1" :ui="{ label: 'truncate' }" />
+                  <UButton
+                    :label="folder.name"
+                    :title="folderIndex.path(folder.id).map(f => f.name).join(' / ')"
+                    prefetch-on="interaction"
+                    :to="folderLink(folder.id)"
+                    icon="i-lucide-folder"
+                    :variant="folderFilter === folder.id ? 'soft' : 'ghost'"
+                    color="neutral"
+                    class="min-w-0 flex-1"
+                    :ui="{ label: 'truncate' }"
+                  />
                   <UButton icon="i-lucide-pin-off" :aria-label="`Unpin ${folder.name}`" :disabled="pinBusy" size="xs" variant="ghost" color="neutral" @click="setPinned(folder, false)" />
                 </div>
               </template>
@@ -625,13 +703,14 @@ function clearFilters() {
                 color="neutral"
                 class="min-h-9 min-w-0 flex-1 items-start justify-start py-2 text-left text-[13px]"
                 :ui="{ label: 'min-w-0 whitespace-normal break-words leading-5', leadingIcon: 'mt-0.5 shrink-0' }"
+                prefetch-on="interaction"
                 :to="folderLink(row.folder.id)"
               />
               <UDropdownMenu :items="folderMenu(row.folder)">
                 <UButton icon="i-lucide-ellipsis-vertical" :aria-label="`Actions for ${row.folder.name}`" size="xs" color="neutral" variant="ghost" class="mt-1 shrink-0" />
               </UDropdownMenu>
             </div>
-            <p v-if="!folderError && fetchStatus === 'success' && !folderRows.length" class="px-2.5 py-4 text-sm text-muted">
+            <p v-if="!folderError && foldersLoaded && !folderRows.length" class="px-2.5 py-4 text-sm text-muted">
               {{ folderSearch.trim() ? 'No matching folders. Try another name.' : 'No folders yet.' }}
             </p>
           </template>
@@ -727,13 +806,14 @@ function clearFilters() {
           />
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-          <UAlert v-if="!folderError && fetchStatus === 'success' && folderFilter !== 'all' && !selectedFolderPath.length" title="Folder not found" color="warning" class="mb-4" :actions="[{ label: 'All folders', to: folderLink('all') }]" />
+          <UAlert v-if="!folderError && foldersLoaded && folderFilter !== 'all' && !selectedFolderPath.length" title="Folder not found" color="warning" class="mb-4" :actions="[{ label: 'All folders', to: folderLink('all') }]" />
           <nav v-if="selectedFolderPath.length" aria-label="Folder breadcrumb" class="mb-4 flex flex-wrap items-center gap-1">
             <UButton
               label="All folders"
               variant="link"
               color="neutral"
               size="xs"
+              prefetch-on="interaction"
               :to="folderLink('all')"
             />
             <template v-for="folder in selectedFolderPath" :key="folder.id">
@@ -744,6 +824,7 @@ function clearFilters() {
                 variant="link"
                 color="neutral"
                 size="xs"
+                prefetch-on="interaction"
                 :to="folderLink(folder.id)"
               />
             </template>
@@ -757,12 +838,25 @@ function clearFilters() {
               color="neutral"
               variant="outline"
               class="justify-start"
+              prefetch-on="interaction"
               :to="folderLink(folder.id)"
             />
           </div>
+          <UAlert
+            v-if="detailError || dimensionError"
+            :title="dimensionError ? 'Could not search all banner sizes' : 'Could not load banner sizes and previews'"
+            color="warning"
+            class="mb-4"
+            :actions="[{ label: 'Retry', onClick: refresh }]"
+          />
           <div class="mb-4 flex items-center justify-between gap-2">
             <p class="text-xs text-muted" role="status">
-              {{ projects.length }} project{{ projects.length === 1 ? '' : 's' }}
+              <template v-if="loadingProjects">
+                Loading projects…
+              </template>
+              <template v-else>
+                {{ projects.length }} project{{ projects.length === 1 ? '' : 's' }}
+              </template>
             </p>
             <UButton
               v-if="hasActiveFilters"
@@ -775,7 +869,7 @@ function clearFilters() {
             />
           </div>
           <div
-            v-if="fetchStatus === 'pending'"
+            v-if="loadingProjects"
             class="space-y-3"
             aria-label="Loading projects"
             aria-busy="true"
@@ -803,7 +897,7 @@ function clearFilters() {
                 variant="ghost"
                 color="neutral"
                 size="xs"
-                @click="downloadTarget = projectById.get(id) || null"
+                @click="() => { downloadTarget = projectById.get(id) || null }"
               />
               <UDropdownMenu :items="dropdownItems(projectById.get(id)!)">
                 <UButton
