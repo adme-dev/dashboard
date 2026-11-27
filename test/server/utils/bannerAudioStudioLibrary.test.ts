@@ -69,6 +69,21 @@ describe('Banner Studio Audio Studio library', () => {
     expect(mocks.upload).not.toHaveBeenCalled()
   })
 
+  it('applies the music filters before taking a page of scoped assets', async () => {
+    mocks.queryRows.mockResolvedValueOnce([])
+    await listAssets({
+      kind: 'music', clientId, includeShared: true, search: 'bed', playableOnly: true, includeVariants: false, limit: 13, offset: 12,
+      musicFilters: { genre: 'Hip-Hop', mood: 'Uplifting', vocals: 'instrumental', maxDuration: 30 }
+    })
+    const [sql, params] = mocks.queryRows.mock.calls[0]!
+    expect(sql).toContain('(client_id = $2 OR client_id IS NULL)')
+    expect(sql).toContain(`concat_ws(' ', title, prompt) ~* $4`)
+    expect(sql).toContain(`concat_ws(' ', title, prompt) ~* $5`)
+    expect(sql).toContain('is_instrumental IS TRUE AND duration_sec > 0 AND duration_sec <= $6')
+    expect(sql).toContain('LIMIT $7 OFFSET $8')
+    expect(params).toEqual(['music', clientId, 'bed', expect.stringContaining('hip[ -]?hop'), expect.stringContaining('uplifting'), 30, 13, 12])
+  })
+
   it('signs previews only after checking the job’s client', async () => {
     mocks.queryFresh.mockResolvedValueOnce(null).mockResolvedValueOnce(source)
     mocks.presign.mockResolvedValue('https://assets.example.test/preview.wav')

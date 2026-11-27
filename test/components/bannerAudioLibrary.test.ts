@@ -116,7 +116,7 @@ describe('Banner Studio audio tracks', () => {
     expect(host.textContent).toContain('Instrumental · 15s')
     expect(host.textContent).not.toContain(voice.title)
     expect(host.textContent).not.toContain(upload.name)
-    const search = host.querySelector<HTMLInputElement>('input[placeholder="Search media..."]')!
+    const search = host.querySelector<HTMLInputElement>('input[placeholder="Search tracks…"]')!
     search.value = 'Evening'
     search.dispatchEvent(new Event('input', { bubbles: true }))
     await vi.advanceTimersByTimeAsync(250)
@@ -134,6 +134,47 @@ describe('Banner Studio audio tracks', () => {
     expect(request).toHaveBeenLastCalledWith(endpoint, { method: 'POST', body: { projectId: 'project-2', assetId: music.id } })
     expect(addLayer).toHaveBeenCalledTimes(2)
     expect(addLayer).toHaveBeenLastCalledWith(expect.objectContaining({ src: managed.url }))
+  })
+
+  it('sends music filters with search, and keeps them out of other track categories', async () => {
+    const { request } = await mount()
+    clickButton('Music')
+    await settle()
+    const filters = host.querySelectorAll<HTMLSelectElement>('fieldset select')
+    for (const [index, value] of ['Cinematic', 'Uplifting', 'instrumental', '15'].entries()) {
+      filters[index]!.value = value
+      filters[index]!.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    await settle()
+    expect(request).toHaveBeenLastCalledWith(endpoint, expect.objectContaining({
+      query: expect.objectContaining({ kind: 'music', genre: 'Cinematic', mood: 'Uplifting', vocals: 'instrumental', maxDuration: 15, offset: 0 })
+    }))
+    clickButton('Clear filters')
+    await settle()
+    expect(request.mock.lastCall?.[1].query).toMatchObject({ genre: undefined, mood: undefined, vocals: undefined, maxDuration: undefined })
+    clickButton('Voiceovers')
+    await settle()
+    expect(host.querySelector('fieldset select')).toBeNull()
+    expect(request.mock.lastCall?.[1].query).not.toHaveProperty('genre')
+  })
+
+  it('shows actual playback position and seeks without adding the track', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue()
+    const { addLayer } = await mount()
+    clickButton('Play preview for Evening bed')
+    await settle()
+    const audio = host.querySelector('audio')!
+    Object.defineProperty(audio, 'duration', { value: 15, configurable: true })
+    audio.currentTime = 2
+    audio.dispatchEvent(new Event('timeupdate'))
+    await settle()
+    const range = host.querySelector<HTMLInputElement>('input[type=range]')!
+    expect(range.valueAsNumber).toBe(2)
+    expect(range.max).toBe('15')
+    range.value = '9'
+    range.dispatchEvent(new Event('input'))
+    expect(audio.currentTime).toBe(9)
+    expect(addLayer).not.toHaveBeenCalled()
   })
 
   it('allows choosing an Audio Studio track for an existing audio layer', async () => {
