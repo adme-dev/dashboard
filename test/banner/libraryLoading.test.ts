@@ -73,6 +73,9 @@ it('loads summaries, defers closed tools and fetches complete artwork only when 
   expect(host.textContent).toContain('1080 × 1080 · 1080 × 1920')
   expect(toolMounted).not.toHaveBeenCalled()
 
+  expect(host.querySelector('[data-duplicate]')).toBeNull()
+  host.querySelector<HTMLButtonElement>('[aria-label="Actions for Summer sale"]')!.click()
+  await Vue.nextTick()
   host.querySelector<HTMLButtonElement>('[data-duplicate]')!.click()
   for (let i = 0; i < 10; i++) await Vue.nextTick()
   expect(fetch).toHaveBeenCalledWith('/api/agency/banner-studio/projects/project')

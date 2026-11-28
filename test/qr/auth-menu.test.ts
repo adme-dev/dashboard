@@ -9,6 +9,7 @@ vi.mock('~~/server/utils/roleResolver', () => ({ resolveUserPermissions: mocks.r
 vi.mock('~~/server/utils/godMode/authority', () => ({ resolveGodModeAuthority: async () => ({ active: false }) }))
 vi.mock('h3', async original => ({ ...await original<typeof import('h3')>(), getHeader: () => undefined }))
 vi.stubGlobal('defineEventHandler', (handler: unknown) => handler)
+vi.stubGlobal('setResponseHeader', vi.fn())
 vi.stubGlobal('getCookie', () => 'synthetic-cookie')
 const { default: me } = await import('../../server/api/auth/me.get')
 

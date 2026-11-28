@@ -3,6 +3,7 @@ import { isReadOnlyRole } from '~~/server/utils/permissions'
 import { queryOneFresh, queryRowsFresh } from '~~/server/utils/db'
 import { hasAllBannerClientAccess, hasBannerClientPermission } from '~~/server/utils/banner/clientAccess'
 
+import { runAfterResponse } from '~~/server/utils/asyncBackground'
 import { clearExpiredBannerBin } from '~~/server/utils/banner/folderBin'
 
 export default defineEventHandler(async (event) => {
@@ -14,8 +15,8 @@ export default defineEventHandler(async (event) => {
   // Shared agency folder metadata only. Project lists retain their client/owner scope.
   setHeader(event, 'Cache-Control', 'private, no-store')
   const view = getQuery(event).view
-  if (view === 'library' || view === 'bin') await clearExpiredBannerBin()
   if (view === 'bin') {
+    await clearExpiredBannerBin()
     if (!allClients || isReadOnlyRole(user.role) || user.isCustomReadOnly) return []
     return queryRowsFresh(`SELECT id, name, parent_id AS "parentId", position, bin_root_id AS "rootId",
       binned_at + interval '30 days' AS "expiresAt" FROM banner_folders
@@ -24,6 +25,8 @@ export default defineEventHandler(async (event) => {
   const activeFolders = `SELECT id, name, parent_id AS "parentId", position,
     source_path AS "sourcePath" FROM banner_folders WHERE binned_at IS NULL`
   if (view !== 'library') return queryRowsFresh(`${activeFolders} ORDER BY lower(name), name, id`)
+  // The active-folder query already excludes the bin. Run physical expiry off the browse path.
+  runAfterResponse(event, clearExpiredBannerBin(), 'banner-bin-expiry')
   const library = await queryOneFresh(`SELECT
     (SELECT json_agg(f ORDER BY lower(f.name), f.name, f.id) FROM (${activeFolders}) f) AS folders,
     (SELECT dashboard_preferences->'bannerFolderPins' FROM team_members WHERE id = $1) AS pins`, [user.id])

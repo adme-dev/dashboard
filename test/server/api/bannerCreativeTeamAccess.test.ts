@@ -20,7 +20,7 @@ const folders = (await import('~~/server/api/agency/banner-studio/folders/index.
 const CLIENT = '22222222-2222-4222-8222-222222222222'
 const user = { id: 'tina', role: 'creative', permissionGroups: ['CREATIVE'] }
 const project = { id: 'project', clientId: CLIENT, createdBy: 'another-designer', name: 'Existing client banner' }
-const event = (query = {}) => ({ query }) as unknown as H3Event
+const event = (query = {}) => ({ query, context: {} }) as unknown as H3Event
 
 beforeEach(() => {
   vi.clearAllMocks()

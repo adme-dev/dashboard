@@ -7,6 +7,7 @@ const testGlobal = globalThis as typeof globalThis & {
 }
 
 testGlobal.defineEventHandler = fn => fn
+vi.stubGlobal('setResponseHeader', vi.fn())
 testGlobal.getCookie = vi.fn()
 testGlobal.deleteCookie = vi.fn()
 
