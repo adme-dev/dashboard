@@ -7,6 +7,7 @@ import { withQrTeamPermission } from '~~/server/utils/qr/permissions'
 import { canAccessQrCodes } from '~~/shared/qr/permissions'
 
 export default defineEventHandler(async (event) => {
+  setResponseHeader(event, 'Cache-Control', 'private, no-store')
   // Get token from Authorization header or cookie (httpOnly primary, client-visible fallback)
   const cookieToken = getCookie(event, 'auth_token') || getCookie(event, 'auth_token_client')
   const authHeader = getHeader(event, 'authorization')
@@ -37,8 +38,11 @@ export default defineEventHandler(async (event) => {
 
     // Resolve permission groups
     const resolved = await resolveUserPermissions(event, user.id, user.role, user.custom_role_id)
-    resolved.groups = await resolveAccountingUiGroups(event, user.id, resolved.groups)
-    const godModeAuthority = await resolveGodModeAuthority(event, user.id)
+    const [accountingGroups, godModeAuthority] = await Promise.all([
+      resolveAccountingUiGroups(event, user.id, resolved.groups),
+      resolveGodModeAuthority(event, user.id)
+    ])
+    resolved.groups = accountingGroups
     const qrUser = await withQrTeamPermission({ ...user, permissionGroups: resolved.groups, isCustomReadOnly: resolved.isReadOnly })
 
     return {

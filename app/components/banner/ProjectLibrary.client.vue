@@ -4,6 +4,7 @@ import { indexBannerFolders, bannerFolderRouteId, bannerFolderRows, bannerFolder
 import { apiErrorDescription, isAmbiguousApiFailure } from '~/utils/apiError'
 import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
 import { rememberFirstPoster } from '~/utils/banner-poster-preload'
+import BannerLibraryActionMenu from '~/components/banner/LibraryActionMenu.vue'
 import type { LibrarySort } from '~/utils/banner-library'
 
 type CardDetails = Pick<BannerProjectSummary, 'id' | 'thumbnailUrl' | 'formats'>
@@ -712,9 +713,12 @@ function clearFilters() {
                 prefetch-on="interaction"
                 :to="folderLink(row.folder.id)"
               />
-              <UDropdownMenu :items="folderMenu(row.folder)">
-                <UButton icon="i-lucide-ellipsis-vertical" :aria-label="`Actions for ${row.folder.name}`" size="xs" color="neutral" variant="ghost" class="mt-1 shrink-0" />
-              </UDropdownMenu>
+              <BannerLibraryActionMenu
+                :items="() => [folderMenu(row.folder)]"
+                :label="`Actions for ${row.folder.name}`"
+                icon="i-lucide-ellipsis-vertical"
+                class="mt-1 shrink-0"
+              />
             </div>
             <p v-if="!folderError && foldersLoaded && !folderRows.length" class="px-2.5 py-4 text-sm text-muted">
               {{ folderSearch.trim() ? 'No matching folders. Try another name.' : 'No folders yet.' }}
@@ -905,15 +909,11 @@ function clearFilters() {
                 size="xs"
                 @click="() => { downloadTarget = projectById.get(id) || null }"
               />
-              <UDropdownMenu :items="dropdownItems(projectById.get(id)!)">
-                <UButton
-                  icon="i-lucide-more-horizontal"
-                  :aria-label="`Actions for ${projectById.get(id)?.name}`"
-                  variant="ghost"
-                  color="neutral"
-                  size="xs"
-                />
-              </UDropdownMenu>
+              <BannerLibraryActionMenu
+                :items="() => dropdownItems(projectById.get(id)!)"
+                :label="`Actions for ${projectById.get(id)?.name}`"
+                icon="i-lucide-more-horizontal"
+              />
             </template>
           </BannerLibraryItems>
           <div v-else class="py-16 text-center">
