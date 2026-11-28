@@ -371,6 +371,10 @@ export default defineNuxtConfig({
     '/auth/**': { ssr: false },
     '/agency': { ssr: false },
     '/agency/**': { ssr: false },
+    // Start the two cookie-authenticated library reads while the SPA boots.
+    '/agency/banner-studio/folders/**': { ssr: false, headers: {
+      Link: '</api/agency/banner-studio/projects?view=catalog>; rel=preload; as=fetch; crossorigin, </api/agency/banner-studio/folders?view=library>; rel=preload; as=fetch; crossorigin'
+    } },
     '/portal': { ssr: false },
     '/portal/**': { ssr: false },
     '/studio': { ssr: false },

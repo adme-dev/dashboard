@@ -78,3 +78,21 @@ it('falls back once to a supplied image and leaves a placeholder for missing or 
   await nextTick()
   expect(empty.host.querySelector('img,iframe')).toBeNull()
 })
+
+it('requests the matching list thumbnail before details arrive and can use a late fallback', async () => {
+  const { reactive } = await import('vue')
+  const props = reactive({ projectId: 'p', hasLayouts: true, size: 'list' as const, thumbnailUrl: '' })
+  const host = document.createElement('div')
+  const app = createApp({ render: () => h(ProjectPoster, props) })
+  app.component('UIcon', { render: () => h('span') })
+  apps.add(app)
+  app.mount(host)
+  observers.at(-1)!([{ isIntersecting: true }])
+  await nextTick()
+  expect(host.querySelector('img')!.getAttribute('src')).toContain('?size=list&')
+  host.querySelector('img')!.dispatchEvent(new Event('error'))
+  await nextTick()
+  props.thumbnailUrl = '/legacy.jpg'
+  await nextTick()
+  expect(host.querySelector('img')!.getAttribute('src')).toBe('/legacy.jpg')
+})
