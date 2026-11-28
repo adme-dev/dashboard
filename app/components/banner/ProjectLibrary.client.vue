@@ -3,6 +3,7 @@ import type { BannerProject, BannerProjectSummary, BannerFolder } from '~/types/
 import { indexBannerFolders, bannerFolderRouteId, bannerFolderRows, bannerFolderUrl, bannerProjectFolderId } from '~/utils/banner-folders'
 import { apiErrorDescription, isAmbiguousApiFailure } from '~/utils/apiError'
 import { bannerDimensions, bannerLibraryFacets, filterBannerProjects, sortLibrary, theBriefCreatedDate } from '~/utils/banner-library'
+import { rememberFirstPoster } from '~/utils/banner-poster-preload'
 import type { LibrarySort } from '~/utils/banner-library'
 
 type CardDetails = Pick<BannerProjectSummary, 'id' | 'thumbnailUrl' | 'formats'>
@@ -51,9 +52,9 @@ function selectClient(id: string) {
 function selectTag(tag: string) {
   void router.push({ path: route.path, query: { ...route.query, tag: tag === 'all' ? undefined : tag } })
 }
-const savedView = useCookie<'list' | 'grid'>('banner-library-view', { default: () => 'grid', sameSite: 'lax' })
+const savedView = useCookie<'list' | 'grid'>('banner-library-view', { default: () => 'list', sameSite: 'lax' })
 const view = computed<'list' | 'grid'>({
-  get: () => savedView.value === 'list' ? 'list' : 'grid',
+  get: () => savedView.value === 'grid' ? 'grid' : 'list',
   set: (value) => { savedView.value = value }
 })
 const sort = ref<LibrarySort>('modified')
@@ -300,11 +301,16 @@ const libraryItems = computed(() => visibleProjects.value.map((p) => {
     category: p.tags?.includes('import:needs-review') ? `${p.status} · Import needs review` : p.status,
     dimensions: formats ? bannerDimensions(undefined, formats) : '',
     type: formats ? `${formats.length} size${formats.length === 1 ? '' : 's'} · Editable` : 'Editable',
-    date: p.updatedAt || p.createdAt, thumbnailUrl: detail?.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, hasLayouts: !!formats?.length,
+    date: p.updatedAt || p.createdAt, thumbnailUrl: detail?.thumbnailUrl, projectId: p.id, previewVersion: p.updatedAt, hasLayouts: formats ? formats.length > 0 : true,
     sourceCreatedDate: p.tags?.includes('source:thebrief') ? theBriefCreatedDate(p.tags) : undefined,
     to: `${editorBase.value}/${p.id}`
   }
 }))
+watch([() => libraryItems.value[0], view], ([first, layout]) => {
+  if (inFolders.value && first?.hasLayouts) {
+    rememberFirstPoster(location.pathname + location.search, layout, first.id, first.previewVersion)
+  }
+})
 const projectById = computed(() => new Map(visibleProjects.value.map(p => [p.id, p])))
 watch([searchQuery, statusFilter, clientFilter, folderFilter, tagFilter, sort], () => {
   page.value = 1

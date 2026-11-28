@@ -25,17 +25,45 @@ export function bannerViewerSnapshot(project: { id: string, name: string, canvas
   return { document, bytes, revision, clientId: project.clientId ?? null, clientName: project.clientName ?? null, key: `banner-snapshots/${project.id}/${revision}.json` }
 }
 
-export async function authorizedBannerSnapshot(event: H3Event, write = false) {
+interface PreviewProject {
+  id: string
+  name: string
+  clientId: string | null
+  clientName: string | null
+  createdBy: string
+  canvasData?: unknown
+  posterRevision?: string
+}
+
+async function authorizedProject(event: H3Event, write: boolean, revisionOnly: boolean) {
   const user = write ? await requireWriteAccess(event) : await requireAuth(event)
   const id = getRouterParam(event, 'id')
   if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw createError({ statusCode: 400, statusMessage: 'Invalid project ID' })
-  const project = await queryOneFresh<{ id: string, name: string, canvasData: unknown, clientId: string | null, clientName: string | null, createdBy: string }>(
-    `SELECT p.id, p.name, p.canvas_data AS "canvasData", p.client_id AS "clientId", c.name AS "clientName", p.created_by AS "createdBy"
+  // A row version changes even when an import preserves updated_at. Scoped font
+  // versions also cover legacy faces resolved by family, including new or removed faces.
+  const artwork = revisionOnly
+    ? `md5(concat_ws(':', p.xmin::text, p.updated_at::text, p.client_id::text,
+         (SELECT string_agg(a.id::text || '/' || a.xmin::text, ',' ORDER BY a.id)
+          FROM banner_assets a WHERE 'font' = ANY(a.tags) AND (a.client_id IS NULL OR a.client_id = p.client_id))
+       )) AS "posterRevision"`
+    : 'p.canvas_data AS "canvasData"'
+  const project = await queryOneFresh<PreviewProject>(
+    `SELECT p.id, p.name, ${artwork}, p.client_id AS "clientId", c.name AS "clientName", p.created_by AS "createdBy"
      FROM banner_projects p LEFT JOIN agency_clients c ON c.id = p.client_id WHERE p.id = $1 AND p.binned_at IS NULL`, [id])
   if (!project) throw createError({ statusCode: 404, statusMessage: 'Project not found' })
   if (project.clientId) await requireBannerClientAccess(event, project.clientId)
   else if (project.createdBy !== user.id && !await hasAllBannerClientAccess(user)) throw createError({ statusCode: 403, statusMessage: 'No access to this project' })
-  return bannerViewerSnapshot(project)
+  return project
+}
+
+export async function authorizedPosterRevision(event: H3Event) {
+  const project = await authorizedProject(event, false, true)
+  return { id: project.id, revision: project.posterRevision! }
+}
+
+export async function authorizedBannerSnapshot(event: H3Event, write = false) {
+  const project = await authorizedProject(event, write, false)
+  return bannerViewerSnapshot({ ...project, canvasData: project.canvasData })
 }
 
 function requestBucket(event: H3Event): R2BucketBinding | undefined {

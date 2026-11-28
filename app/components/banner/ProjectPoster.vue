@@ -1,29 +1,38 @@
 <script setup lang="ts">
+import { computed, watch } from 'vue'
 import { queueBannerPoster } from '~/utils/banner-poster-queue'
+import { bannerPosterUrl } from '~/utils/banner-poster-preload'
 import { safeMediaUrl } from '~/utils/safe-url'
 
-const props = defineProps<{ projectId: string, hasLayouts?: boolean, version?: string, thumbnailUrl?: string | null }>()
+const props = defineProps<{ projectId: string, hasLayouts?: boolean, version?: string, size?: 'list' | 'gallery', thumbnailUrl?: string | null }>()
 const container = ref<HTMLElement | null>(null)
 const src = ref<string>()
-const fallback = safeMediaUrl(props.thumbnailUrl)
+const fallback = computed(() => safeMediaUrl(props.thumbnailUrl))
+const visible = ref(false)
+const nativeFailed = ref(false)
+let failedFallback: string | undefined
 let release: (() => void) | undefined
 let finished = false
-const poster = props.hasLayouts
-  ? `/api/agency/banner-studio/projects/${encodeURIComponent(props.projectId)}/image?${new URLSearchParams({ size: 'gallery', v: props.version || '' })}`
-  : fallback
+const poster = computed(() => props.hasLayouts && !nativeFailed.value
+  ? bannerPosterUrl(props.projectId, props.size || 'gallery', props.version)
+  : fallback.value)
 
 useIntersectionObserver(container, ([entry]) => {
-  if (!entry?.isIntersecting) {
+  visible.value = !!entry?.isIntersecting
+}, { rootMargin: '100px' })
+
+watch([visible, poster], ([nearby, url]) => {
+  if (!nearby || !url) {
     if (!src.value) {
       release?.()
       release = undefined
     }
-  } else if (poster && !release && !finished) {
-    release = queueBannerPoster(() => {
-      src.value = poster
-    })
+    return
   }
-}, { rootMargin: '100px' })
+  if (!release && !finished && url !== failedFallback) {
+    release = queueBannerPoster(() => { src.value = poster.value })
+  }
+}, { flush: 'sync' })
 
 function finish() {
   finished = true
@@ -31,12 +40,11 @@ function finish() {
   release = undefined
 }
 function onError() {
-  if (fallback && src.value !== fallback) {
-    src.value = fallback
-    return
-  }
+  if (src.value === fallback.value) failedFallback = src.value
   src.value = undefined
-  finish()
+  release?.()
+  release = undefined
+  nativeFailed.value = true
 }
 onBeforeUnmount(() => release?.())
 </script>

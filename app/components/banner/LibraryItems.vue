@@ -27,10 +27,11 @@ defineEmits<{ open: [id: string] }>()
           >
             <BannerProjectPoster
               v-if="item.projectId"
-              :key="JSON.stringify([item.projectId, item.hasLayouts, item.previewVersion, item.thumbnailUrl])"
+              :key="JSON.stringify([item.projectId, item.hasLayouts, item.previewVersion, view])"
               :project-id="item.projectId"
               :has-layouts="item.hasLayouts"
               :version="item.previewVersion"
+              :size="view === 'list' ? 'list' : 'gallery'"
               :thumbnail-url="item.thumbnailUrl"
               :class="view === 'grid' ? 'aspect-square w-full' : 'h-12 w-20 rounded'"
             />
